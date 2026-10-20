@@ -165,6 +165,19 @@ cp "$CUTCRAFT_TEST_DIST/${url##*/}" "$output"
                ok=False, contains="explicit --version")
         # Platform rejection must happen before contacting GitHub.
         fake_uname = fake_bin / "uname"
+        for machine, target in [("aarch64", "aarch64-unknown-linux-gnu"),
+                                ("arm64", "aarch64-unknown-linux-gnu"),
+                                ("armv7l", "armv7-unknown-linux-gnueabihf"),
+                                ("armv8l", "armv7-unknown-linux-gnueabihf")]:
+            fake_uname.write_text(f'#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo {machine} ;; esac\n')
+            fake_uname.chmod(0o755)
+            log.write_text("")
+            invoke("sh", installer, "--version", v, "--repo", "example/cutcraft",
+                   "--bin-dir", bin_dir, "--force", env=dict(env, CUTCRAFT_TEST_FAIL="archive"),
+                   ok=False, contains="Could not download")
+            assert log.read_text().splitlines() == [
+                f"https://github.com/example/cutcraft/releases/download/v{v}/cutcraft-v{v}-{target}.tar.gz"]
+            assert binary.read_bytes() == original
         fake_uname.write_text("#!/bin/sh\nprintf 'unsupported\\n'\n")
         fake_uname.chmod(0o755)
         log.write_text("")

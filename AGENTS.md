@@ -74,4 +74,7 @@ CUTCRAFT_REQUIRE_FFMPEG=1 cargo test --locked
 - Rust MSRV 当前为 1.86，构建使用 Cargo.lock。CLI 通过 GitHub Releases 分发，不发布 crates.io（`publish = false`）；发布检查、版本 tag 和本地演练遵循 [发布指南](docs/releasing.md)。
 - 发布仓库为 `XGHeaven/cutcraft`，安装脚本默认从该仓库获取最新正式 Release，并支持 `--repo` 覆盖。修改分发仓库时同步安装脚本、下载示例、技能及安装回归测试；设置默认地址不代表已经发布。
 - 安装脚本本身从仓库 `main` 分支的 `scripts/install.sh` 获取，独立于 CLI 发版；二进制和 SHA256SUMS 从同一固定 Release tag 下载。不要将脚本入口重新绑定到 Release 附件；调整脚本分发方式时同步发布打包及安装回归测试。
+- 分发矩阵覆盖 Linux x86_64 / ARM64 / ARMv7 GNU、macOS ARM64 / x86_64 与 Windows x64 MSVC；以 `scripts/release.py` 的 TARGETS 为目标集合，同步 CI、安装器和文档。Unix 用 tar.gz，Windows 用 ZIP 和 main 分支的 `scripts/install.ps1`，安装入口不随二进制打包。
+- 交叉打包必须提供 runner 并运行实际目标二进制，不能跳过执行验证；Linux ARM 使用 QEMU 库测试及工程创建/校验，不宣称经过原生 ARM 媒体验证。Windows 执行完整媒体测试及 PowerShell 5.1/7 安装回归。新增平台上线前以 CI 的实际通过结果为准。
+- 文件持久化复用 Store 的平台同步函数；Windows 不支持通过 std 对目录 fsync，文档须说明掉电持久性差异，文件内容仍需用可写句柄同步。不能把 Unix 目录打开/同步写法散落到功能入口。
 - 更新协议版本、工程布局或发布策略时，同时更新本文件中的对应约定，避免后续开发继续使用过时入口。

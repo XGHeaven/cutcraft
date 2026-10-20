@@ -28,11 +28,15 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     sync_dir(parent)?;
     Ok(())
 }
-fn sync_dir(path: &Path) -> Result<()> {
+pub(crate) fn sync_dir(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         File::open(path)?.sync_all()?;
     }
+    // Windows does not expose a directory fsync equivalent through std. File
+    // contents are flushed before the atomic replacement on every platform.
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 pub struct Store {

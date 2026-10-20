@@ -291,13 +291,18 @@ fn relative_frame_path(uri: &str) -> Result<PathBuf> {
             && url::Url::parse(uri).is_err(),
         "FRAME_URI_INVALID: {uri}"
     );
-    let base = url::Url::parse("file:///cutcraft-sequence-root/")?;
+    // A synthetic drive makes this URI convertible on Windows as well as Unix.
+    // Derive the base path through the same URL conversion as the candidate.
+    let base = url::Url::parse("file:///C:/cutcraft-sequence-root/")?;
+    let base_path = base
+        .to_file_path()
+        .map_err(|_| anyhow::anyhow!("FRAME_URI_INVALID"))?;
     let full = base
         .join(uri)?
         .to_file_path()
         .map_err(|_| anyhow::anyhow!("FRAME_URI_INVALID"))?;
     let rel = full
-        .strip_prefix("/cutcraft-sequence-root")
+        .strip_prefix(&base_path)
         .context("FRAME_URI_ESCAPES_ROOT")?;
     ensure!(
         !rel.as_os_str().is_empty() && rel.components().all(|c| matches!(c, Component::Normal(_))),
@@ -623,8 +628,10 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
             if let Some(stage) = &staging {
                 let dest = stage.path().join(&normalized);
                 fs::create_dir_all(dest.parent().unwrap())?;
-                fs::copy(&path, &dest)?;
-                File::open(&dest)?.sync_all()?;
+                // Keep a writable handle for FlushFileBuffers on Windows.
+                let mut copied = File::create(&dest)?;
+                std::io::copy(&mut File::open(&path)?, &mut copied)?;
+                copied.sync_all()?;
                 ensure!(
                     media::fingerprint(&dest)? == before,
                     "SOURCE_CHANGED_DURING_IMPORT"
@@ -676,7 +683,7 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
         sync_tree(stage.path())?;
         ensure!(!dest.exists(), "managed destination already exists");
         fs::rename(stage.path(), &dest)?;
-        File::open(store.dir.join("assets"))?.sync_all()?;
+        crate::store::sync_dir(&store.dir.join("assets"))?;
     }
     let result = store.apply(&operation, override_locks, false);
     if result.is_err()
@@ -697,7 +704,7 @@ fn sync_tree(path: &Path) -> Result<()> {
             sync_tree(&path)?;
         }
     }
-    File::open(path)?.sync_all()?;
+    crate::store::sync_dir(path)?;
     Ok(())
 }
 

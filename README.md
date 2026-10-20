@@ -6,7 +6,8 @@
 
 ## 安装与运行
 
-CLI 通过 GitHub Releases 分发，提供 Linux x86_64、macOS Apple Silicon / Intel 可执行文件，不发布到 crates.io。
+CLI 通过 GitHub Releases 分发，不发布到 crates.io。构建流程覆盖 Linux x86_64 / ARM64 / ARMv7、
+macOS Apple Silicon / Intel 和 Windows x64。具体下载文件以 Release 附件为准。
 从仓库 `main` 分支下载安装脚本，再由脚本安装 [最新正式版 CLI](https://github.com/XGHeaven/cutcraft/releases)：
 
 ```sh
@@ -18,6 +19,7 @@ curl --fail --location --proto '=https' --proto-redir '=https' \
 默认安装到 `~/.local/bin`。可用 `--version 0.1.0` 固定版本、`--force` 更新已有安装；
 也支持本地压缩包离线安装，详见 [安装说明](docs/install.md)。
 二进制安装不需要 Rust 或 Python；媒体操作需要外部 FFmpeg / ffprobe。
+Windows 使用 `scripts/install.ps1`，平台要求和 PowerShell 安装方式见 [安装说明](docs/install.md#windows-powershell)。
 
 发布流程和本地演练见 [发布指南](docs/releasing.md)，版本变化见 [Changelog](CHANGELOG.md)。
 

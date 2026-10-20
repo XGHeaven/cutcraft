@@ -31,6 +31,8 @@ impl MediaToolError {
             r#"Install FFmpeg with `brew install ffmpeg@7`, then run `export PATH="$(brew --prefix ffmpeg@7)/bin:$PATH"` (includes the drawtext filter)."#
         } else if cfg!(target_os = "linux") {
             "Install FFmpeg with your package manager (Ubuntu 24.04: `sudo apt-get update && sudo apt-get install ffmpeg`)."
+        } else if cfg!(target_os = "windows") {
+            "Install a Windows FFmpeg build with drawtext, libx264 and FFV1; add the directory containing ffmpeg.exe and ffprobe.exe to PATH."
         } else {
             "Install an FFmpeg distribution containing both ffmpeg and ffprobe."
         };

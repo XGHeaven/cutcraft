@@ -9,10 +9,15 @@ Cutcraft 通过 GitHub Releases 分发可执行文件，不发布到 crates.io�
 | 系统 | Release 文件中的 target | 支持范围 |
 | --- | --- | --- |
 | Linux x86_64 | `x86_64-unknown-linux-gnu` | glibc 2.39+，在 Ubuntu 24.04 构建和验证；不支持 Alpine/musl |
+| Linux ARM64 | `aarch64-unknown-linux-gnu` | glibc 2.39+，交叉编译，QEMU 库测试与 CLI 冒烟验证 |
+| Linux ARMv7 | `armv7-unknown-linux-gnueabihf` | glibc 2.39+，32 位 hard-float 用户空间；交叉编译与 QEMU 验证 |
 | macOS Apple Silicon | `aarch64-apple-darwin` | macOS 15+ |
 | macOS Intel | `x86_64-apple-darwin` | macOS 15+ |
+| Windows x64 | `x86_64-pc-windows-msvc` | Windows 10+ / Server 2022+；CI 在 Server 2022 原生测试，ZIP 包 |
 
-当前不分发 Windows 或 Linux ARM 二进制。macOS 文件暂无 Developer ID 签名和公证；
+v0.1.0 的跨平台重发包含上述六个平台；下载时以实际 Release 附件为准。
+Linux ARM 未执行原生硬件媒体回归，不支持 ARMv6、soft-float 或 musl。Windows 暂不分发 ARM64 / x86 包。
+macOS 文件暂无 Developer ID 签名和公证；Windows 文件暂无 Authenticode 签名。
 通过浏览器下载后可能需要按 macOS 的系统提示允许运行，不要全局关闭系统安全设置。
 
 ## 使用安装脚本
@@ -53,6 +58,32 @@ sh install.sh --version 0.1.0 \
 也可以手动验证校验和后解压，将包内的 `cutcraft` 放入 PATH。
 卸载只需删除安装目录中的 `cutcraft`；工程和素材保留在原位置。
 
+### Windows PowerShell
+
+Windows PowerShell 5.1 或 PowerShell 7：
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1
+$env:PATH = "$env:LOCALAPPDATA\Cutcraft\bin;$env:PATH"
+cutcraft --version
+```
+
+安装入口同样来自 `main`。默认安装最新正式版到 `%LOCALAPPDATA%\Cutcraft\bin`；
+用 `-Repo OWNER/REPO`、`-Version VERSION`、`-BinDir DIR`、`-Force` 覆盖设置。
+最新版本通过 GitHub API 解析一次，随后 ZIP 与 SHA256SUMS 从同一个 tag 下载。
+公开 API 的限流或下载错误会中止安装；可指定版本跳过 API。已有文件默认拒绝覆盖，
+验证 SHA-256、解包及运行版本检查完成后才原子替换。不会自动修改 PATH 或执行策略。
+
+离线安装：
+
+```powershell
+.\install.ps1 -Version 0.1.0 -Archive .\cutcraft-v0.1.0-x86_64-pc-windows-msvc.zip -Checksums .\SHA256SUMS
+```
+
+也可手动核对 SHA-256 后解压
+ZIP，将 `cutcraft.exe` 所在目录放入 PATH；卸载删除该文件即可。
+
 ## FFmpeg 与字体
 
 macOS（Homebrew）：
@@ -64,6 +95,8 @@ export PATH="$(brew --prefix ffmpeg@7)/bin:$PATH"
 
 使用包含 `drawtext` 的构建；部分精简 FFmpeg 包不含文字滤镜。`ffmpeg@7` 是 keg-only，需要将其 bin 目录放到 PATH 前面。
 Ubuntu 24.04：`sudo apt-get update && sudo apt-get install ffmpeg fonts-dejavu-core`。
+Windows：安装包含上述滤镜/编码器的 FFmpeg Windows 构建，并把 `ffmpeg.exe`、
+`ffprobe.exe` 所在目录加入 PATH；CI 使用 Chocolatey 的 `ffmpeg` 包。
 用 `ffmpeg -version`、`ffprobe -version` 确认已在 PATH 中。
 JSON 工程编辑与校验不要求 FFmpeg。固定字幕字体可通过工程的字体素材引用实现。
 
@@ -84,3 +117,4 @@ sh scripts/install-skill.sh /path/to/agent/skills
 
 技能默认安装到 `${CODEX_HOME:-$HOME/.codex}/skills/cutcraft`，不会覆盖已有安装。
 技能包不包含 CLI 或 FFmpeg；更新技能前先备份并移走已有目录。
+Windows 可直接复制解压包内的 `skills/cutcraft` 到 Agent 的技能目录，无需运行 shell 脚本。

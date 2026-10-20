@@ -54,9 +54,11 @@ else
 fi
 case "$(uname -s)/$(uname -m)" in
     Linux/x86_64) target=x86_64-unknown-linux-gnu ;;
+    Linux/aarch64|Linux/arm64) target=aarch64-unknown-linux-gnu ;;
+    Linux/armv7l|Linux/armv8l) target=armv7-unknown-linux-gnueabihf ;;
     Darwin/arm64) target=aarch64-apple-darwin ;;
     Darwin/x86_64) target=x86_64-apple-darwin ;;
-    *) fail 'Supported platforms: Linux x86_64, macOS arm64/x86_64' ;;
+    *) fail 'Supported platforms: Linux x86_64/arm64/armv7 (glibc, ARMv7 hard-float), macOS arm64/x86_64; use install.ps1 on Windows' ;;
 esac
 # Resolve latest once, then pin both downloads to the same immutable tag name.
 # No JSON parser or GitHub API token is needed for public releases.

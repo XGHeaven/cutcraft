@@ -5,10 +5,11 @@
 
 ## 自动流程
 
-- CI：Linux Rust 1.86 / stable 的 fmt、Clippy、强制媒体测试；三个分发平台的原生构建、
-  完整测试、二进制打包、校验和及离线安装/运行验证。
+- CI：Linux Rust 1.86 / stable 的 fmt、Clippy、强制媒体测试；Linux x86_64、两个 macOS 平台及
+  Windows x64 的原生完整测试、打包和安装验证。Linux ARM64 / ARMv7 使用 GCC 交叉链接器
+  构建，QEMU 执行库/动画测试及打包前后 CLI 冒烟验证，不将模拟器检查表述为原生媒体验证。
 - Release：推送 `v*` tag 触发；校验 tag 必须等于 `v` 加 Cargo 版本，Cargo.lock 与
-  Changelog 必须匹配。复用全部 CI，通过后汇总三个平台和技能包，生成 SHA256SUMS。
+  Changelog 必须匹配。复用全部 CI，通过后汇总六个平台和技能包，生成 SHA256SUMS。
 - 只有 tag push 会创建 GitHub Release。手动运行 Release workflow 只生成可下载的
   `release-bundle` Actions artifact，适合正式发布前演练。
 - 发布使用现有 tag，不替你生成 tag；已存在的 Release 不覆盖。预发布版本含 `-`，
@@ -27,7 +28,34 @@ python3 scripts/release.py assemble --partial
 python3 scripts/test-release.py --dist dist
 ```
 
-`--target` 需匹配当前 Rust host；Linux 和 Intel Mac 分别使用其 target。
+默认 `--target` 匹配当前 Rust host。交叉编译需先安装 Rust target、配置 Cargo linker，
+并显式传入 `--runner`；不允许跳过产物运行验证直接打包。Windows 包内为 `cutcraft.exe`，
+其余平台为 `cutcraft`。支持目标集中在 `scripts/release.py` 的 `TARGETS` 中；
+增加目标时同步 CI、安装器平台映射和文档。
+
+例如在 Ubuntu 24.04 x86_64 上构建 Linux ARM64：
+
+```sh
+sudo apt-get install gcc-aarch64-linux-gnu qemu-user
+rustup target add aarch64-unknown-linux-gnu
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu"
+cargo test --locked --target aarch64-unknown-linux-gnu --lib
+python3 scripts/release.py package --target aarch64-unknown-linux-gnu \
+  --runner "qemu-aarch64 -L /usr/aarch64-linux-gnu"
+python3 scripts/release.py assemble --partial
+python3 scripts/test-cross-release.py --dist dist --target aarch64-unknown-linux-gnu \
+  --runner "qemu-aarch64 -L /usr/aarch64-linux-gnu"
+```
+
+ARMv7 对应 `armv7-unknown-linux-gnueabihf`、`gcc-arm-linux-gnueabihf`、
+`qemu-arm -L /usr/arm-linux-gnueabihf`。Cargo 配置见
+[官方 linker / runner 文档](https://doc.rust-lang.org/cargo/reference/config.html#targettriplerunner)。
+跨平台编译仍需对应 sysroot 和链接器；仅 `rustup target add` 不足以完成链接。
+Windows x64 在 MSVC Developer 环境用同一 package / assemble 命令，
+CI 使用 `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS="-C target-feature=+crt-static"` 静态链接 CRT，
+安装回归使用 `python scripts/test-windows-release.py --dist dist`（需要 PowerShell 5.1 和 7）。
+Windows CI 显式设置 Fontconfig 的系统字体目录与临时缓存，避免依赖 FFmpeg 包的默认字体配置。
 macOS 正式构建设置 `MACOSX_DEPLOYMENT_TARGET=15.0`。本地没有设置时，使用工具链默认值。
 macOS CI 使用 Homebrew `ffmpeg@7` 并将其 bin 目录加入 PATH；测试前实际调用 `drawtext`，避免精简 FFmpeg 包漏掉字幕依赖。
 打包脚本始终执行 release build，并验证实际二进制版本与 capabilities。
@@ -37,9 +65,9 @@ macOS CI 使用 Homebrew `ffmpeg@7` 并将其 bin 目录加入 PATH；测试前�
 安装器默认解析 GitHub 最新正式 Release，再固定 tag 下载；回归测试使用本地下载替身覆盖
 最新/指定版本、网络失败、无效 tag、平台拒绝及保留旧安装，不依赖仓库已公开发布。
 
-发布附件为三个 `cutcraft-vVERSION-TARGET.tar.gz`、`cutcraft-skill-vVERSION.tar.gz`、
+发布附件为五个 Unix `cutcraft-vVERSION-TARGET.tar.gz`、一个 Windows `cutcraft-vVERSION-TARGET.zip`、`cutcraft-skill-vVERSION.tar.gz`、
 `RELEASE_NOTES.md` 和 `SHA256SUMS`。
-CLI 安装脚本独立从仓库 `main` 分支的 `scripts/install.sh` 下载，不再作为 Release 附件发布。
+CLI 安装脚本独立从仓库 `main` 分支的 `scripts/install.sh` / `scripts/install.ps1` 下载，不作为 Release 附件发布。
 CI 直接验证仓库中的安装脚本；脚本修复可单独合入主分支，无需重新发布二进制。
 本地重新 assemble 会移除旧流程生成的 `dist/install.sh`，并重新生成附件校验和。
 

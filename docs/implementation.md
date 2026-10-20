@@ -22,6 +22,12 @@ Cutcraft 0.1.0 creates Spec 0.1.0 projects using `spec/schemas/`. This is the fi
 
 Text transparency and phased stderr progress are described in [text and progress](text-and-progress.md).
 
+Distribution builds cover Linux x86_64/ARM64/ARMv7 GNU, macOS ARM64/x86_64 and Windows x64 MSVC.
+ARM targets use cross compilation with QEMU library and packaged CLI checks; media regression is native on the other platforms.
+See [installation](install.md) for platform requirements and the v0.1.0 cross-platform re-release.
+Windows flushes file contents and atomically replaces files, but Rust std has no directory fsync equivalent;
+the Unix directory-sync guarantee does not extend to Windows power-loss durability.
+
 ## Transaction and recovery
 
 The public `edit::apply` is pure: it clones the snapshot, applies commands, normalizes canonical fields, validates the entire result, computes inverses, then returns the next snapshot and Event. Failure cannot mutate the caller's snapshot. Final validation happens after all batch members, allowing mutually dependent entities to be created together. Track locks are checked after **each** subcommand to prevent unlocking/relocking through a batch bypass.
