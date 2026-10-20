@@ -100,12 +100,12 @@ mod tests {
     #[test]
     fn piped_processes_use_the_same_dependency_error() {
         let path = tempfile::tempdir().unwrap();
-        let error = Command::new("ffmpeg")
-            .env("PATH", path.path())
-            .media_spawn()
-            .unwrap_err();
+        // Windows may search the parent PATH even when a child PATH is set.
+        // Use an absolute missing executable to test the adapter deterministically.
+        let executable = path.path().join("missing-ffmpeg");
+        let error = Command::new(&executable).media_spawn().unwrap_err();
         let error = error.downcast_ref::<MediaToolError>().unwrap();
         assert_eq!(error.code(), "MEDIA_TOOL_NOT_FOUND");
-        assert_eq!(error.executable, "ffmpeg");
+        assert_eq!(error.executable, executable.to_string_lossy());
     }
 }

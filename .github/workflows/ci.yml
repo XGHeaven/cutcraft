@@ -34,7 +34,7 @@ jobs:
       - run: shellcheck scripts/*.sh
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+      - run: cargo test --locked --no-fail-fast
         env:
           CUTCRAFT_REQUIRE_FFMPEG: '1'
 
@@ -93,7 +93,7 @@ jobs:
           "FONTCONFIG_FILE=$config" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Check text rendering dependency
         run: ffmpeg -v error -f lavfi -i 'color=s=16x16:d=0.1,drawtext=text=Cutcraft' -frames:v 1 -f null -
-      - run: cargo test --locked
+      - run: cargo test --locked --no-fail-fast
       - run: python scripts/release.py package --target "$TARGET"
         env:
           TARGET: ${{ matrix.target }}
