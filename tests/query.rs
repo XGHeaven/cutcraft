@@ -86,6 +86,20 @@ fn search_names_decoded_missing_paths_tags_and_combined_filters() {
     assert_eq!(found["count"], 1);
     assert_eq!(found["assets"][0]["assetId"], f.asset);
     assert_eq!(found["assets"][0]["streams"][0]["id"], "stream_i0");
+    let path_query = format!("云南{}Wedding Photos", std::path::MAIN_SEPARATOR);
+    let by_path = AssetFilter {
+        path: Some(path_query.clone()),
+        ..Default::default()
+    };
+    assert_eq!(query::assets(&f.p, dir.path(), &by_path)["count"], 1);
+    let by_item_path = ItemFilter {
+        query: Some(path_query),
+        ..Default::default()
+    };
+    assert_eq!(
+        query::items(&f.p, dir.path(), &by_item_path).unwrap()["count"],
+        2
+    );
     filter.tag = Some("wedding".into());
     assert_eq!(query::assets(&f.p, dir.path(), &filter)["count"], 1);
     filter.kind = Some("lut".into());

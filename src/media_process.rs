@@ -3,7 +3,33 @@ use std::{
     error::Error,
     fmt, io,
     process::{Child, Command, Output},
+    sync::OnceLock,
 };
+
+/// FFmpeg 9 removed the legacy graph-file option. Detect it once per process,
+/// retaining FFmpeg 6.1 support and file-based graphs (Windows argv is bounded).
+pub(crate) fn graph_file_option() -> anyhow::Result<&'static str> {
+    static OPTION: OnceLock<&'static str> = OnceLock::new();
+    if let Some(option) = OPTION.get() {
+        return Ok(option);
+    }
+    let output = Command::new("ffmpeg")
+        .args(["-hide_banner", "-h", "full"])
+        .media_output()?;
+    anyhow::ensure!(output.status.success(), "FFMPEG_CAPABILITY_CHECK_FAILED");
+    let help = String::from_utf8_lossy(&output.stdout);
+    let option = if help.contains("-filter_complex_script ") {
+        "-filter_complex_script"
+    } else {
+        anyhow::ensure!(
+            help.contains("-filter_complex "),
+            "FFMPEG_FILTER_GRAPH_UNSUPPORTED"
+        );
+        "-/filter_complex"
+    };
+    let _ = OPTION.set(option);
+    Ok(option)
+}
 
 #[derive(Debug)]
 pub struct MediaToolError {
@@ -101,11 +127,14 @@ mod tests {
     fn piped_processes_use_the_same_dependency_error() {
         let path = tempfile::tempdir().unwrap();
         // Windows may search the parent PATH even when a child PATH is set.
-        // Use an absolute missing executable to test the adapter deterministically.
-        let executable = path.path().join("missing-ffmpeg");
-        let error = Command::new(&executable).media_spawn().unwrap_err();
+        // A unique bare name also exercises PATH lookup before QEMU's spawn path.
+        let executable = format!("missing-ffmpeg-{}", uuid::Uuid::now_v7());
+        let error = Command::new(&executable)
+            .env("PATH", path.path())
+            .media_spawn()
+            .unwrap_err();
         let error = error.downcast_ref::<MediaToolError>().unwrap();
         assert_eq!(error.code(), "MEDIA_TOOL_NOT_FOUND");
-        assert_eq!(error.executable, executable.to_string_lossy());
+        assert_eq!(error.executable, executable);
     }
 }

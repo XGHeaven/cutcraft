@@ -18,6 +18,8 @@ cutcraft -p demo.cut asset info ASSET_ID
 
 路径搜索同时检查存储的 URI 和解析后的绝对本地路径，自动解码 URI 中的中文、空格，无需知道 `%E4%...` 编码。文件即使丢失也可以搜索。远程 URI 仍可按 URI 搜索，但返回的本地 `path` 为 `null`。`availability` 是快照里的登记状态；查询不会检测磁盘实时状态，需要时运行 `validate --level media`。
 
+Windows 下路径查询接受 `/` 和 `\` 两种分隔符，包括通过素材路径搜索片段；Unix 下反斜杠仍按文件名中的字面字符处理。返回的 `path` 保持系统原生格式。
+
 列表提供 `assetId`、名称、路径、类型、存储方式、标签、`streams` 和 `usageCount`。`asset info` 额外返回完整 `asset` 对象，可据此保留字段并构造 `asset.put`。
 
 ## 从素材定位使用位置

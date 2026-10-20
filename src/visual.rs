@@ -587,7 +587,7 @@ pub fn prepare(
     let decode_log = output.with_extension("decode.log");
     let encode_log = output.with_extension("encode.log");
     let mut dec = decoder
-        .args(["-filter_complex_script"])
+        .arg(crate::media_process::graph_file_option()?)
         .arg(graph_path)
         .args([
             "-map",

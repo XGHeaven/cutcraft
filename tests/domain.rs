@@ -519,9 +519,8 @@ fn lock_contention_is_nonblocking_and_legacy_is_protected() {
     let held = Store::init(tmp.path(), "locked").unwrap();
     assert!(tmp.path().join("cutcraft.json").is_file());
     assert!(!tmp.path().join("project.json").exists());
+    #[cfg(unix)]
     let lock_before = std::fs::read(tmp.path().join(".cutcraft.lock")).unwrap();
-    let metadata: Value = serde_json::from_slice(&lock_before).unwrap();
-    assert_eq!(metadata["pid"], std::process::id());
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cutcraft"))
         .arg("-p")
         .arg(tmp.path())
@@ -530,11 +529,14 @@ fn lock_contention_is_nonblocking_and_legacy_is_protected() {
         .unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("PROJECT_LOCKED"));
-    assert_eq!(
-        lock_before,
-        std::fs::read(tmp.path().join(".cutcraft.lock")).unwrap()
-    );
     drop(held);
+    // Windows byte-range locks also prohibit reads through another handle.
+    // Inspect diagnostic metadata after releasing the lock, on every platform.
+    let lock_after = std::fs::read(tmp.path().join(".cutcraft.lock")).unwrap();
+    let metadata: Value = serde_json::from_slice(&lock_after).unwrap();
+    assert_eq!(metadata["pid"], std::process::id());
+    #[cfg(unix)]
+    assert_eq!(lock_before, lock_after);
     Store::open(tmp.path()).unwrap();
     let legacy = tempfile::tempdir().unwrap();
     std::fs::write(legacy.path().join("project.json"), b"legacy").unwrap();

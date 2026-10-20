@@ -693,7 +693,7 @@ fn render_internal(
     let graph = filters.join(";\n");
     fs::write(scratch.path().join("graph.txt"), &graph)?;
     cmd.args([
-        "-filter_complex_script",
+        crate::media_process::graph_file_option()?,
         "graph.txt",
         "-map",
         "[vout]",

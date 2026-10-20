@@ -96,7 +96,8 @@ export PATH="$(brew --prefix ffmpeg@7)/bin:$PATH"
 使用包含 `drawtext` 的构建；部分精简 FFmpeg 包不含文字滤镜。`ffmpeg@7` 是 keg-only，需要将其 bin 目录放到 PATH 前面。
 Ubuntu 24.04：`sudo apt-get update && sudo apt-get install ffmpeg fonts-dejavu-core`。
 Windows：安装包含上述滤镜/编码器的 FFmpeg Windows 构建，并把 `ffmpeg.exe`、
-`ffprobe.exe` 所在目录加入 PATH；CI 使用 Chocolatey 的 `ffmpeg` 包。
+`ffprobe.exe` 所在目录加入 PATH；CI 使用 Chocolatey 的 `ffmpeg` 包，并优先使用包内真实
+可执行文件的目录。部分 Chocolatey .NET 启动器无法处理 Windows 扩展路径，不要让该启动器覆盖真实 FFmpeg 的 PATH 优先级。
 用 `ffmpeg -version`、`ffprobe -version` 确认已在 PATH 中。
 JSON 工程编辑与校验不要求 FFmpeg。固定字幕字体可通过工程的字体素材引用实现。
 

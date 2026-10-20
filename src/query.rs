@@ -33,6 +33,21 @@ fn matches(filter: Option<&str>, values: &[&str]) -> bool {
         values.iter().any(|v| v.to_lowercase().contains(&q))
     })
 }
+fn matches_path(filter: Option<&str>, values: &[&str]) -> bool {
+    if cfg!(windows) {
+        let normalized = values
+            .iter()
+            .map(|v| v.replace('\\', "/"))
+            .collect::<Vec<_>>();
+        let filter = filter.map(|q| q.replace('\\', "/"));
+        matches(
+            filter.as_deref(),
+            &normalized.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+    } else {
+        matches(filter, values)
+    }
+}
 fn result(p: &Value, key: &str, rows: Vec<Value>) -> Value {
     let mut v = json!({"ok":true,"revision":p["revision"],"count":rows.len()});
     v[key] = json!(rows);
@@ -144,7 +159,7 @@ fn frame_matches(dir: &Path, a: &Value, q: Option<&str>) -> (usize, Value) {
             .ok()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default();
-        if matches(Some(q), &[text(&f["uri"]), &path]) {
+        if matches_path(Some(q), &[text(&f["uri"]), &path]) {
             count += 1;
             if first.is_null() {
                 first = json!({"index":index,"uri":f["uri"],"path":path});
@@ -171,9 +186,11 @@ pub fn assets(p: &Value, dir: &Path, f: &AssetFilter) -> Value {
             values.extend(array(&a["tags"]).iter().filter_map(Value::as_str));
             let (path_count, path_first) = frame_matches(dir, a, f.path.as_deref());
             let (query_count, query_first) = frame_matches(dir, a, f.query.as_deref());
-            ((matches(f.query.as_deref(), &values) || query_count > 0)
+            ((matches(f.query.as_deref(), &values)
+                || matches_path(f.query.as_deref(), &[text(&a["uri"]), &path])
+                || query_count > 0)
                 && matches(f.name.as_deref(), &[text(&a["name"])])
-                && (matches(f.path.as_deref(), &[text(&a["uri"]), &path]) || path_count > 0)
+                && (matches_path(f.path.as_deref(), &[text(&a["uri"]), &path]) || path_count > 0)
                 && f.kind.as_ref().is_none_or(|k| a["kind"] == *k)
                 && f.source_type.as_ref().is_none_or(|k| source_type(a) == k)
                 && f.tag.as_ref().is_none_or(|tag| {
@@ -322,11 +339,15 @@ pub fn items(p: &Value, dir: &Path, f: &ItemFilter) -> Result<Value> {
                 .filter_map(Value::as_str)
                 .map(str::to_owned),
         );
-        let mut frame_match = false;
+        let mut reference_match = false;
         for r in &refs {
             let aid = text(&r["assetId"]);
             if let Some(a) = p["assets"].get(aid) {
-                frame_match |= frame_matches(dir, a, f.query.as_deref()).0 > 0;
+                reference_match |= frame_matches(dir, a, f.query.as_deref()).0 > 0
+                    || matches_path(
+                        f.query.as_deref(),
+                        &[text(&a["uri"]), &asset_path(dir, a).unwrap_or_default()],
+                    );
                 values.extend([
                     aid.to_owned(),
                     text(&a["name"]).to_owned(),
@@ -338,7 +359,7 @@ pub fn items(p: &Value, dir: &Path, f: &ItemFilter) -> Result<Value> {
         if loc.item["type"] == "sequence" {
             values.push(text(&p["sequences"][text(&loc.item["sequenceId"])]["name"]).to_owned());
         }
-        if frame_match
+        if reference_match
             || matches(
                 f.query.as_deref(),
                 &values.iter().map(String::as_str).collect::<Vec<_>>(),
