@@ -29,6 +29,7 @@ python3 scripts/test-release.py --dist dist
 
 `--target` 需匹配当前 Rust host；Linux 和 Intel Mac 分别使用其 target。
 macOS 正式构建设置 `MACOSX_DEPLOYMENT_TARGET=15.0`。本地没有设置时，使用工具链默认值。
+macOS CI 使用 Homebrew `ffmpeg@7` 并将其 bin 目录加入 PATH；测试前实际调用 `drawtext`，避免精简 FFmpeg 包漏掉字幕依赖。
 打包脚本始终执行 release build，并验证实际二进制版本与 capabilities。
 `--partial` 只供单机演练；正式汇总禁止缺少任何平台。
 `dist/` 由 Git 忽略，不包含素材或私人演示工程。重复演练可使用新的 `--dist` 路径。

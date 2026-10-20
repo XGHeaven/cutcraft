@@ -55,7 +55,14 @@ sh install.sh --version 0.1.0 \
 
 ## FFmpeg 与字体
 
-macOS（Homebrew）：`brew install ffmpeg`。
+macOS（Homebrew）：
+
+```sh
+brew install ffmpeg@7
+export PATH="$(brew --prefix ffmpeg@7)/bin:$PATH"
+```
+
+使用包含 `drawtext` 的构建；部分精简 FFmpeg 包不含文字滤镜。`ffmpeg@7` 是 keg-only，需要将其 bin 目录放到 PATH 前面。
 Ubuntu 24.04：`sudo apt-get update && sudo apt-get install ffmpeg fonts-dejavu-core`。
 用 `ffmpeg -version`、`ffprobe -version` 确认已在 PATH 中。
 JSON 工程编辑与校验不要求 FFmpeg。固定字幕字体可通过工程的字体素材引用实现。

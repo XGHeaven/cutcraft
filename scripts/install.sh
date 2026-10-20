@@ -22,7 +22,8 @@ while [ "$#" -gt 0 ]; do
         --help|-h) usage; exit 0 ;;
         --force) force=true; shift ;;
         --repo|--version|--archive|--checksums|--bin-dir)
-            [ "$#" -ge 2 ] && [ -n "$2" ] || fail "Missing value for $1"
+            [ "$#" -ge 2 ] || fail "Missing value for $1"
+            [ -n "$2" ] || fail "Missing value for $1"
             case "$1" in
                 --repo) repo=$2 ;;
                 --version) version=${2#v} ;;

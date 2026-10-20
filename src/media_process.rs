@@ -28,7 +28,7 @@ impl MediaToolError {
             );
         }
         let install = if cfg!(target_os = "macos") {
-            "Install FFmpeg with `brew install ffmpeg`."
+            r#"Install FFmpeg with `brew install ffmpeg@7`, then run `export PATH="$(brew --prefix ffmpeg@7)/bin:$PATH"` (includes the drawtext filter)."#
         } else if cfg!(target_os = "linux") {
             "Install FFmpeg with your package manager (Ubuntu 24.04: `sudo apt-get update && sudo apt-get install ffmpeg`)."
         } else {

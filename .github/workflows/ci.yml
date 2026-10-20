@@ -68,7 +68,11 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - if: runner.os == 'macOS'
-        run: brew install ffmpeg
+        run: |
+          brew install ffmpeg@7
+          echo "$(brew --prefix ffmpeg@7)/bin" >> "$GITHUB_PATH"
+      - name: Check text rendering dependency
+        run: ffmpeg -v error -f lavfi -i 'color=s=16x16:d=0.1,drawtext=text=Cutcraft' -frames:v 1 -f null -
       - run: cargo test --locked
       - run: python3 scripts/release.py package --target "$TARGET"
         env:
