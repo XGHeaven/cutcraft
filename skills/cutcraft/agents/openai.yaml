@@ -1,0 +1,3 @@
+interface:
+  display_name: "Cutcraft"
+  short_description: "Edit and render videos with the Cutcraft CLI"

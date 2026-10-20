@@ -1,0 +1,933 @@
+{
+  "$schema": "https://cutstate.dev/schema/v0.3/project.schema.json",
+  "specVersion": "0.3.0",
+  "id": "project_01a05303-e41c-71db-94d6-b4560e27950d",
+  "name": "Launch Film",
+  "revision": 7,
+  "createdAt": "2026-08-29T00:00:00Z",
+  "updatedAt": "2026-08-29T02:30:00Z",
+  "rootSequenceId": "seq_01a05303-e41c-71db-94d6-b45c004f2d0f",
+  "assets": {
+    "asset_01a05303-e41c-71db-94d6-b4580ff0d48a": {
+      "name": "Camera A",
+      "kind": "media",
+      "uri": "assets/camera-a.mov",
+      "storage": "managed",
+      "availability": "online",
+      "mimeType": "video/quicktime",
+      "fingerprint": {
+        "algorithm": "sha256",
+        "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "streams": [
+        {
+          "id": "stream_v0",
+          "kind": "video",
+          "index": 0,
+          "codec": "h264",
+          "duration": {
+            "num": 60,
+            "den": 1
+          },
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "pixelAspect": {
+              "num": 1,
+              "den": 1
+            },
+            "frameRate": {
+              "num": 30,
+              "den": 1
+            },
+            "colorSpace": "rec709",
+            "alphaMode": "none"
+          }
+        },
+        {
+          "id": "stream_a0",
+          "kind": "audio",
+          "index": 1,
+          "codec": "pcm-s24le",
+          "duration": {
+            "num": 60,
+            "den": 1
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "layout": "stereo"
+          }
+        }
+      ],
+      "tags": [
+        "interview",
+        "primary"
+      ],
+      "metadata": {
+        "camera": "A"
+      },
+      "extensions": {}
+    },
+    "asset_01a05303-e41c-71db-94d6-b45a860ed343": {
+      "name": "Launch Theme",
+      "kind": "media",
+      "uri": "assets/launch-theme.wav",
+      "storage": "managed",
+      "availability": "online",
+      "mimeType": "audio/wav",
+      "fingerprint": {
+        "algorithm": "sha256",
+        "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "streams": [
+        {
+          "id": "stream_a0",
+          "kind": "audio",
+          "index": 0,
+          "codec": "pcm-s24le",
+          "duration": {
+            "num": 120,
+            "den": 1
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "layout": "stereo"
+          }
+        }
+      ],
+      "tags": [
+        "music"
+      ],
+      "metadata": {},
+      "extensions": {}
+    },
+    "asset_01a05303-e41c-71db-94d6-b4597facf1da": {
+      "name": "Inter Bold",
+      "kind": "font",
+      "uri": "assets/Inter-Bold.ttf",
+      "storage": "managed",
+      "availability": "online",
+      "mimeType": "font/ttf",
+      "fingerprint": {
+        "algorithm": "sha256",
+        "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "streams": [],
+      "tags": [
+        "font"
+      ],
+      "metadata": {},
+      "extensions": {}
+    },
+    "asset_01a05303-e41c-71db-94d6-b46f69526ef9": {
+      "name": "Identity 3D",
+      "kind": "lut",
+      "uri": "luts/identity-3d.cube",
+      "storage": "external",
+      "availability": "online",
+      "streams": [],
+      "fingerprint": {
+        "algorithm": "sha256",
+        "value": "932110e8a544b192a6e13800bcc32c224da39f7a6127a59b7ae7310077bd2549"
+      }
+    }
+  },
+  "sequences": {
+    "seq_01a05303-e41c-71db-94d6-b45be6d2e3d1": {
+      "name": "Intro",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frameRate": {
+          "num": 30,
+          "den": 1
+        },
+        "pixelAspect": {
+          "num": 1,
+          "den": 1
+        },
+        "audioSampleRate": 48000,
+        "audioChannelLayout": "stereo",
+        "colorSpace": "rec709"
+      },
+      "durationMode": "fixed",
+      "duration": {
+        "num": 5,
+        "den": 1
+      },
+      "background": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "tracks": [
+        {
+          "id": "track_01a05303-e41c-71db-94d6-b45fa0ab277a",
+          "kind": "video",
+          "name": "Background",
+          "role": "background",
+          "enabled": true,
+          "locked": false,
+          "muted": false,
+          "solo": false,
+          "overlapPolicy": "forbid",
+          "items": [
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b46a98dacf93",
+              "type": "generator",
+              "name": "Black Background",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 0,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 5,
+                  "den": 1
+                }
+              },
+              "generatorType": "builtin.color",
+              "version": "1.0.0",
+              "parameters": {
+                "color": {
+                  "r": 0.02,
+                  "g": 0.02,
+                  "b": 0.025,
+                  "a": 1
+                }
+              },
+              "effects": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "metadata": {},
+          "extensions": {}
+        },
+        {
+          "id": "track_01a05303-e41c-71db-94d6-b460a4ae9d8b",
+          "kind": "video",
+          "name": "Title",
+          "role": "graphics",
+          "enabled": true,
+          "locked": false,
+          "muted": false,
+          "solo": false,
+          "overlapPolicy": "forbid",
+          "items": [
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b46c948853fd",
+              "type": "generator",
+              "name": "Launch Title",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 1,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 3,
+                  "den": 1
+                }
+              },
+              "generatorType": "builtin.text",
+              "version": "1.0.0",
+              "parameters": {
+                "text": "INTRODUCING CUTSTATE",
+                "fontAssetId": "asset_01a05303-e41c-71db-94d6-b4597facf1da",
+                "fontSizePixels": 96,
+                "color": {
+                  "r": 1,
+                  "g": 1,
+                  "b": 1,
+                  "a": 1
+                }
+              },
+              "video": {
+                "transform": {
+                  "position": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "scale": {
+                    "x": 1,
+                    "y": 1
+                  },
+                  "rotationDegrees": 0
+                },
+                "opacity": 1,
+                "blendMode": "normal"
+              },
+              "effects": [
+                {
+                  "id": "effect_01a05303-e41c-71db-94d6-b46f69526ef7",
+                  "effectType": "builtin.opacity",
+                  "version": "1.0.0",
+                  "enabled": true,
+                  "parameters": {},
+                  "automation": [
+                    {
+                      "parameter": "opacity",
+                      "interpolation": "linear",
+                      "keyframes": [
+                        {
+                          "offset": {
+                            "num": 0,
+                            "den": 1
+                          },
+                          "value": 0
+                        },
+                        {
+                          "offset": {
+                            "num": 1,
+                            "den": 2
+                          },
+                          "value": 1
+                        }
+                      ]
+                    }
+                  ],
+                  "extensions": {}
+                }
+              ],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "transitions": [],
+      "links": [],
+      "markers": [],
+      "metadata": {},
+      "extensions": {}
+    },
+    "seq_01a05303-e41c-71db-94d6-b45c004f2d0f": {
+      "name": "Main",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frameRate": {
+          "num": 30,
+          "den": 1
+        },
+        "pixelAspect": {
+          "num": 1,
+          "den": 1
+        },
+        "audioSampleRate": 48000,
+        "audioChannelLayout": "stereo",
+        "colorSpace": "rec709"
+      },
+      "durationMode": "auto",
+      "background": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "tracks": [
+        {
+          "id": "track_01a05303-e41c-71db-94d6-b4633460a92b",
+          "kind": "video",
+          "name": "Video 1",
+          "role": "primary",
+          "enabled": true,
+          "locked": false,
+          "muted": false,
+          "solo": false,
+          "overlapPolicy": "transition-only",
+          "items": [
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b46b949ad750",
+              "type": "sequence",
+              "name": "Intro",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 0,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 5,
+                  "den": 1
+                }
+              },
+              "sequenceId": "seq_01a05303-e41c-71db-94d6-b45be6d2e3d1",
+              "sourceRange": {
+                "start": {
+                  "num": 0,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 5,
+                  "den": 1
+                }
+              },
+              "playback": {
+                "mode": "fit",
+                "reverse": false
+              },
+              "effects": [],
+              "metadata": {},
+              "extensions": {}
+            },
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b46445af6a17",
+              "type": "media",
+              "name": "Opening Statement",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 5,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 6,
+                  "den": 1
+                }
+              },
+              "linkGroupId": "link_01a05303-e41c-71db-94d6-b4717b86e7f1",
+              "assetId": "asset_01a05303-e41c-71db-94d6-b4580ff0d48a",
+              "streamId": "stream_v0",
+              "sourceRange": {
+                "start": {
+                  "num": 12,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 6,
+                  "den": 1
+                }
+              },
+              "playback": {
+                "mode": "fit",
+                "reverse": false
+              },
+              "video": {
+                "transform": {
+                  "position": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "scale": {
+                    "x": 1,
+                    "y": 1
+                  },
+                  "rotationDegrees": 0,
+                  "crop": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  }
+                },
+                "opacity": 1,
+                "blendMode": "normal"
+              },
+              "effects": [],
+              "tags": [
+                "dialogue"
+              ],
+              "metadata": {},
+              "extensions": {}
+            },
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b465d578351e",
+              "type": "media",
+              "name": "Product Payoff",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 11,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 10,
+                  "den": 1
+                }
+              },
+              "linkGroupId": "link_01a05303-e41c-71db-94d6-b47225f6b78d",
+              "assetId": "asset_01a05303-e41c-71db-94d6-b4580ff0d48a",
+              "streamId": "stream_v0",
+              "sourceRange": {
+                "start": {
+                  "num": 30,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 10,
+                  "den": 1
+                }
+              },
+              "playback": {
+                "mode": "fit",
+                "reverse": false
+              },
+              "video": {
+                "opacity": 1,
+                "blendMode": "normal"
+              },
+              "effects": [],
+              "tags": [
+                "dialogue"
+              ],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "metadata": {},
+          "extensions": {}
+        },
+        {
+          "id": "track_01a05303-e41c-71db-94d6-b462ff8410bc",
+          "kind": "video",
+          "name": "Global Grade",
+          "role": "adjustment",
+          "enabled": true,
+          "locked": false,
+          "muted": false,
+          "solo": false,
+          "overlapPolicy": "forbid",
+          "items": [
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b46999ccfc2b",
+              "type": "adjustment",
+              "name": "Warm Grade",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 5,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 16,
+                  "den": 1
+                }
+              },
+              "effects": [
+                {
+                  "id": "effect_01a05303-e41c-71db-94d6-b46e57e6ca92",
+                  "effectType": "builtin.color-grade",
+                  "version": "1.0.0",
+                  "enabled": true,
+                  "parameters": {
+                    "temperature": 0.08,
+                    "contrast": 1.05,
+                    "saturation": 1.02
+                  },
+                  "automation": [],
+                  "extensions": {}
+                },
+                {
+                  "id": "effect_01a05303-e41c-71db-94d6-b46f69526ef8",
+                  "effectType": "builtin.curves",
+                  "version": "1.0.0",
+                  "parameters": {
+                    "rgb": [
+                      {
+                        "x": 0,
+                        "y": 0
+                      },
+                      {
+                        "x": 0.5,
+                        "y": 0.55
+                      },
+                      {
+                        "x": 1,
+                        "y": 1
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "effect_01a05303-e41c-71db-94d6-b46f69526ef9",
+                  "effectType": "builtin.lut",
+                  "version": "1.0.0",
+                  "parameters": {
+                    "assetId": "asset_01a05303-e41c-71db-94d6-b46f69526ef9",
+                    "strength": 0.75,
+                    "inputColorSpace": "rec709",
+                    "outputColorSpace": "rec709",
+                    "interpolation": "tetrahedral"
+                  }
+                }
+              ],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "metadata": {},
+          "extensions": {}
+        },
+        {
+          "id": "track_01a05303-e41c-71db-94d6-b45d0e99974f",
+          "kind": "audio",
+          "name": "Dialogue",
+          "role": "dialogue",
+          "enabled": true,
+          "locked": false,
+          "muted": false,
+          "solo": false,
+          "overlapPolicy": "forbid",
+          "items": [
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b4662317fa68",
+              "type": "media",
+              "name": "Opening Statement Audio",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 5,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 6,
+                  "den": 1
+                }
+              },
+              "linkGroupId": "link_01a05303-e41c-71db-94d6-b4717b86e7f1",
+              "assetId": "asset_01a05303-e41c-71db-94d6-b4580ff0d48a",
+              "streamId": "stream_a0",
+              "sourceRange": {
+                "start": {
+                  "num": 12,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 6,
+                  "den": 1
+                }
+              },
+              "playback": {
+                "mode": "fit",
+                "reverse": false
+              },
+              "audio": {
+                "gainDb": 0,
+                "pan": 0,
+                "muted": false,
+                "fadeIn": {
+                  "num": 1,
+                  "den": 100
+                },
+                "fadeOut": {
+                  "num": 1,
+                  "den": 100
+                }
+              },
+              "effects": [],
+              "metadata": {},
+              "extensions": {}
+            },
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b46777bfabab",
+              "type": "media",
+              "name": "Product Payoff Audio",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 11,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 10,
+                  "den": 1
+                }
+              },
+              "linkGroupId": "link_01a05303-e41c-71db-94d6-b47225f6b78d",
+              "assetId": "asset_01a05303-e41c-71db-94d6-b4580ff0d48a",
+              "streamId": "stream_a0",
+              "sourceRange": {
+                "start": {
+                  "num": 30,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 10,
+                  "den": 1
+                }
+              },
+              "playback": {
+                "mode": "fit",
+                "reverse": false
+              },
+              "audio": {
+                "gainDb": 0,
+                "pan": 0,
+                "muted": false,
+                "fadeIn": {
+                  "num": 1,
+                  "den": 100
+                },
+                "fadeOut": {
+                  "num": 1,
+                  "den": 100
+                }
+              },
+              "effects": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "metadata": {},
+          "extensions": {}
+        },
+        {
+          "id": "track_01a05303-e41c-71db-94d6-b45e07430df5",
+          "kind": "audio",
+          "name": "Music",
+          "role": "music",
+          "enabled": true,
+          "locked": false,
+          "muted": false,
+          "solo": false,
+          "overlapPolicy": "forbid",
+          "items": [
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b46d5d69d86c",
+              "type": "media",
+              "name": "Music Bed",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 0,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 21,
+                  "den": 1
+                }
+              },
+              "assetId": "asset_01a05303-e41c-71db-94d6-b45a860ed343",
+              "streamId": "stream_a0",
+              "sourceRange": {
+                "start": {
+                  "num": 0,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 21,
+                  "den": 1
+                }
+              },
+              "playback": {
+                "mode": "fit",
+                "reverse": false
+              },
+              "audio": {
+                "gainDb": -14,
+                "pan": 0,
+                "muted": false,
+                "fadeIn": {
+                  "num": 1,
+                  "den": 2
+                },
+                "fadeOut": {
+                  "num": 1,
+                  "den": 1
+                }
+              },
+              "effects": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "metadata": {},
+          "extensions": {}
+        },
+        {
+          "id": "track_01a05303-e41c-71db-94d6-b461f45ee577",
+          "kind": "subtitle",
+          "name": "English Captions",
+          "role": "captions",
+          "enabled": true,
+          "locked": false,
+          "muted": false,
+          "solo": false,
+          "overlapPolicy": "forbid",
+          "items": [
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b4681f9645fc",
+              "type": "caption",
+              "name": "Caption 1",
+              "enabled": true,
+              "timelineRange": {
+                "start": {
+                  "num": 5,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 3,
+                  "den": 1
+                }
+              },
+              "text": "Editing should be a programmable medium.",
+              "speaker": "speaker-1",
+              "language": "en",
+              "words": [
+                {
+                  "text": "Editing",
+                  "range": {
+                    "start": {
+                      "num": 0,
+                      "den": 1
+                    },
+                    "duration": {
+                      "num": 3,
+                      "den": 5
+                    }
+                  },
+                  "confidence": 0.99
+                },
+                {
+                  "text": "should be a programmable medium.",
+                  "range": {
+                    "start": {
+                      "num": 3,
+                      "den": 5
+                    },
+                    "duration": {
+                      "num": 12,
+                      "den": 5
+                    }
+                  },
+                  "confidence": 0.97
+                }
+              ],
+              "style": {
+                "fontAssetId": "asset_01a05303-e41c-71db-94d6-b4597facf1da",
+                "fontFamily": "Inter",
+                "fontSizePixels": 58,
+                "color": {
+                  "r": 1,
+                  "g": 1,
+                  "b": 1,
+                  "a": 1
+                },
+                "backgroundColor": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 0.7
+                },
+                "position": "bottom",
+                "align": "center",
+                "maxLines": 2
+              },
+              "effects": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "transitions": [
+        {
+          "id": "transition_01a05303-e41c-71db-94d6-b470173412e8",
+          "fromItemId": "item_01a05303-e41c-71db-94d6-b46445af6a17",
+          "toItemId": "item_01a05303-e41c-71db-94d6-b465d578351e",
+          "transitionType": "builtin.crossfade",
+          "version": "1.0.0",
+          "duration": {
+            "num": 1,
+            "den": 2
+          },
+          "alignment": "center",
+          "parameters": {},
+          "extensions": {}
+        }
+      ],
+      "links": [
+        {
+          "id": "link_01a05303-e41c-71db-94d6-b4717b86e7f1",
+          "kind": "av",
+          "itemIds": [
+            "item_01a05303-e41c-71db-94d6-b46445af6a17",
+            "item_01a05303-e41c-71db-94d6-b4662317fa68"
+          ],
+          "metadata": {},
+          "extensions": {}
+        },
+        {
+          "id": "link_01a05303-e41c-71db-94d6-b47225f6b78d",
+          "kind": "av",
+          "itemIds": [
+            "item_01a05303-e41c-71db-94d6-b465d578351e",
+            "item_01a05303-e41c-71db-94d6-b46777bfabab"
+          ],
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "markers": [
+        {
+          "id": "marker_01a05303-e41c-71db-94d6-b474cecf99db",
+          "name": "Product payoff",
+          "start": {
+            "num": 11,
+            "den": 1
+          },
+          "duration": {
+            "num": 0,
+            "den": 1
+          },
+          "color": {
+            "r": 1,
+            "g": 0.6,
+            "b": 0,
+            "a": 1
+          },
+          "comment": "Review the transition and music beat here.",
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "metadata": {
+        "notes": "Primary launch edit"
+      },
+      "extensions": {
+        "com.example.review": {
+          "status": "in-review"
+        }
+      }
+    }
+  },
+  "metadata": {
+    "brief": "A concise product launch film"
+  },
+  "extensions": {},
+  "createdWith": {
+    "id": "cutcraft.cli",
+    "kind": "cli",
+    "version": "0.1.0"
+  },
+  "lastModifiedWith": {
+    "id": "cutcraft.cli",
+    "kind": "cli",
+    "version": "0.1.0"
+  },
+  "editors": [
+    {
+      "id": "cutcraft.cli",
+      "kind": "cli",
+      "version": "0.1.0"
+    }
+  ]
+}

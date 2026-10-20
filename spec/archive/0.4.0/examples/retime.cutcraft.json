@@ -1,0 +1,205 @@
+{
+  "$schema": "https://cutstate.dev/schema/v0.4/project.schema.json",
+  "specVersion": "0.4.0",
+  "id": "project_01a05303-e41c-71db-94d6-b45752c04a90",
+  "name": "Retime: accelerate, freeze, reverse",
+  "revision": 0,
+  "createdAt": "2026-08-29T00:00:00Z",
+  "updatedAt": "2026-08-29T00:00:00Z",
+  "rootSequenceId": "seq_01a05304-a627-7387-9186-e2355b04a892",
+  "assets": {
+    "asset_01a05303-e41c-71db-94d6-b46f69526ef7": {
+      "name": "Example source (not bundled)",
+      "kind": "media",
+      "uri": "assets/example.mp4",
+      "storage": "external",
+      "availability": "offline",
+      "streams": [
+        {
+          "id": "stream_v0",
+          "index": 0,
+          "kind": "video",
+          "duration": {
+            "num": 30,
+            "den": 1
+          },
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "pixelAspect": {
+              "num": 1,
+              "den": 1
+            },
+            "frameRate": {
+              "num": 60,
+              "den": 1
+            },
+            "colorSpace": "rec709"
+          }
+        }
+      ]
+    }
+  },
+  "sequences": {
+    "seq_01a05304-a627-7387-9186-e2355b04a892": {
+      "name": "Main",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frameRate": {
+          "num": 30,
+          "den": 1
+        },
+        "pixelAspect": {
+          "num": 1,
+          "den": 1
+        },
+        "audioSampleRate": 48000,
+        "audioChannelLayout": "stereo",
+        "colorSpace": "rec709"
+      },
+      "durationMode": "auto",
+      "background": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "tracks": [
+        {
+          "id": "track_01a05303-e41c-71db-94d6-b46f69526ef3",
+          "kind": "video",
+          "name": "Animated clip",
+          "overlapPolicy": "forbid",
+          "items": [
+            {
+              "id": "item_01a05303-e41c-71db-94d6-b46f69526ef1",
+              "type": "media",
+              "timelineRange": {
+                "start": {
+                  "num": 0,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 6,
+                  "den": 1
+                }
+              },
+              "sourceRange": {
+                "start": {
+                  "num": 10,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 6,
+                  "den": 1
+                }
+              },
+              "assetId": "asset_01a05303-e41c-71db-94d6-b46f69526ef7",
+              "streamId": "stream_v0",
+              "playback": {
+                "mode": "remap",
+                "version": "1.0.0",
+                "timeMap": {
+                  "$animation": {
+                    "version": "1.0.0",
+                    "valueType": "time",
+                    "timeReference": "owner",
+                    "keyframes": [
+                      {
+                        "offset": {
+                          "num": 0,
+                          "den": 1
+                        },
+                        "value": {
+                          "num": 0,
+                          "den": 1
+                        },
+                        "easing": {
+                          "type": "cubic-hermite",
+                          "outRate": {
+                            "num": 1,
+                            "den": 2
+                          },
+                          "inRate": {
+                            "num": 3,
+                            "den": 2
+                          }
+                        }
+                      },
+                      {
+                        "offset": {
+                          "num": 2,
+                          "den": 1
+                        },
+                        "value": {
+                          "num": 2,
+                          "den": 1
+                        }
+                      },
+                      {
+                        "offset": {
+                          "num": 3,
+                          "den": 1
+                        },
+                        "value": {
+                          "num": 2,
+                          "den": 1
+                        }
+                      },
+                      {
+                        "offset": {
+                          "num": 5,
+                          "den": 1
+                        },
+                        "value": {
+                          "num": 0,
+                          "den": 1
+                        }
+                      },
+                      {
+                        "offset": {
+                          "num": 6,
+                          "den": 1
+                        },
+                        "value": {
+                          "num": 1,
+                          "den": 1
+                        }
+                      }
+                    ]
+                  }
+                },
+                "videoSampling": {
+                  "method": "frame-hold"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "transitions": [],
+      "links": [],
+      "markers": []
+    }
+  },
+  "metadata": {},
+  "extensions": {},
+  "createdWith": {
+    "id": "cutcraft.spec-example",
+    "kind": "library",
+    "version": "0.4.0-draft"
+  },
+  "lastModifiedWith": {
+    "id": "cutcraft.spec-example",
+    "kind": "library",
+    "version": "0.4.0-draft"
+  },
+  "editors": [
+    {
+      "id": "cutcraft.spec-example",
+      "kind": "library",
+      "version": "0.4.0-draft"
+    }
+  ]
+}

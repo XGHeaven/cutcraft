@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutstate.dev/schema/v0.4/event.schema.json",
+  "title": "Cutcraft History Event 0.4.0",
+  "type": "object",
+  "required": [
+    "eventVersion",
+    "eventId",
+    "operationId",
+    "projectId",
+    "revisionBefore",
+    "revisionAfter",
+    "actor",
+    "timestamp",
+    "status",
+    "command",
+    "diagnostics"
+  ],
+  "properties": {
+    "eventVersion": {
+      "const": "0.4.0"
+    },
+    "eventId": {
+      "$ref": "common.schema.json#/$defs/eventId"
+    },
+    "operationId": {
+      "$ref": "common.schema.json#/$defs/operationId"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/projectId"
+    },
+    "revisionBefore": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "revisionAfter": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "actor": {
+      "$ref": "common.schema.json#/$defs/actor"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "applied",
+        "rejected"
+      ]
+    },
+    "command": {
+      "$ref": "operation.schema.json#/$defs/command"
+    },
+    "inverseCommands": {
+      "type": "array",
+      "items": {
+        "$ref": "operation.schema.json#/$defs/nonBatchCommand"
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/diagnostic"
+      }
+    },
+    "projectHashBefore": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "projectHashAfter": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata"
+    }
+  },
+  "additionalProperties": false
+}

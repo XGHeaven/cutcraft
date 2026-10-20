@@ -1,0 +1,61 @@
+{
+  "$schema": "https://cutstate.dev/schema/v0.1/project.schema.json",
+  "specVersion": "0.1.0",
+  "id": "project_01a05303-e41c-71db-94d6-b45752c04a90",
+  "name": "Minimal Project",
+  "revision": 0,
+  "createdAt": "2026-08-29T00:00:00Z",
+  "updatedAt": "2026-08-29T00:00:00Z",
+  "rootSequenceId": "seq_01a05304-a627-7387-9186-e2355b04a892",
+  "assets": {},
+  "sequences": {
+    "seq_01a05304-a627-7387-9186-e2355b04a892": {
+      "name": "Main",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frameRate": {
+          "num": 30,
+          "den": 1
+        },
+        "pixelAspect": {
+          "num": 1,
+          "den": 1
+        },
+        "audioSampleRate": 48000,
+        "audioChannelLayout": "stereo",
+        "colorSpace": "rec709"
+      },
+      "durationMode": "auto",
+      "background": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "tracks": [],
+      "transitions": [],
+      "links": [],
+      "markers": []
+    }
+  },
+  "metadata": {},
+  "extensions": {},
+  "createdWith": {
+    "id": "cutcraft.cli",
+    "kind": "cli",
+    "version": "0.1.0"
+  },
+  "lastModifiedWith": {
+    "id": "cutcraft.cli",
+    "kind": "cli",
+    "version": "0.1.0"
+  },
+  "editors": [
+    {
+      "id": "cutcraft.cli",
+      "kind": "cli",
+      "version": "0.1.0"
+    }
+  ]
+}

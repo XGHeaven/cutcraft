@@ -1,0 +1,611 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutstate.dev/schema/v0.3/operation.schema.json",
+  "title": "Cutcraft Operation 0.3.0",
+  "type": "object",
+  "required": [
+    "specVersion",
+    "operationId",
+    "projectId",
+    "baseRevision",
+    "actor",
+    "timestamp",
+    "command"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri-reference"
+    },
+    "specVersion": {
+      "const": "0.3.0"
+    },
+    "operationId": {
+      "$ref": "common.schema.json#/$defs/operationId"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/projectId"
+    },
+    "baseRevision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "actor": {
+      "$ref": "common.schema.json#/$defs/actor"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "intent": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "command": {
+      "$ref": "#/$defs/command"
+    },
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ripple": {
+      "enum": [
+        "none",
+        "insert",
+        "remove-gap",
+        "overwrite"
+      ]
+    },
+    "projectUpdate": {
+      "type": "object",
+      "required": [
+        "type",
+        "changes"
+      ],
+      "properties": {
+        "type": {
+          "const": "project.update"
+        },
+        "changes": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "rootSequenceId": {
+              "$ref": "common.schema.json#/$defs/sequenceId"
+            },
+            "metadata": {
+              "$ref": "common.schema.json#/$defs/metadata"
+            },
+            "extensions": {
+              "$ref": "common.schema.json#/$defs/extensions"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "assetPut": {
+      "type": "object",
+      "required": [
+        "type",
+        "assetId",
+        "asset"
+      ],
+      "properties": {
+        "type": {
+          "const": "asset.put"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/assetId"
+        },
+        "asset": {
+          "$ref": "project.schema.json#/$defs/asset"
+        }
+      },
+      "additionalProperties": false
+    },
+    "assetRemove": {
+      "type": "object",
+      "required": [
+        "type",
+        "assetId"
+      ],
+      "properties": {
+        "type": {
+          "const": "asset.remove"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/assetId"
+        },
+        "cascade": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sequencePut": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "sequence"
+      ],
+      "properties": {
+        "type": {
+          "const": "sequence.put"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "sequence": {
+          "$ref": "project.schema.json#/$defs/sequence"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sequenceRemove": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId"
+      ],
+      "properties": {
+        "type": {
+          "const": "sequence.remove"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "cascade": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "trackPut": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "track"
+      ],
+      "properties": {
+        "type": {
+          "const": "track.put"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "track": {
+          "$ref": "project.schema.json#/$defs/track"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "trackRemove": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "trackId"
+      ],
+      "properties": {
+        "type": {
+          "const": "track.remove"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "trackId": {
+          "$ref": "common.schema.json#/$defs/trackId"
+        },
+        "cascade": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "trackReorder": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "trackIds"
+      ],
+      "properties": {
+        "type": {
+          "const": "track.reorder"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "trackIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/trackId"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "itemPut": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "trackId",
+        "item"
+      ],
+      "properties": {
+        "type": {
+          "const": "item.put"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "trackId": {
+          "$ref": "common.schema.json#/$defs/trackId"
+        },
+        "item": {
+          "$ref": "project.schema.json#/$defs/item"
+        }
+      },
+      "additionalProperties": false
+    },
+    "itemRemove": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "itemId"
+      ],
+      "properties": {
+        "type": {
+          "const": "item.remove"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "itemId": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        },
+        "ripple": {
+          "$ref": "#/$defs/ripple"
+        },
+        "cascade": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "itemMove": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "itemId",
+        "ripple"
+      ],
+      "properties": {
+        "type": {
+          "const": "item.move"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "itemId": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        },
+        "toTrackId": {
+          "$ref": "common.schema.json#/$defs/trackId"
+        },
+        "timelineStart": {
+          "$ref": "common.schema.json#/$defs/time"
+        },
+        "ripple": {
+          "$ref": "#/$defs/ripple"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "toTrackId"
+          ]
+        },
+        {
+          "required": [
+            "timelineStart"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "itemTrim": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "itemId",
+        "timelineRange",
+        "ripple"
+      ],
+      "properties": {
+        "type": {
+          "const": "item.trim"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "itemId": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        },
+        "timelineRange": {
+          "$ref": "common.schema.json#/$defs/timeRange"
+        },
+        "sourceRange": {
+          "$ref": "common.schema.json#/$defs/timeRange"
+        },
+        "ripple": {
+          "$ref": "#/$defs/ripple"
+        }
+      },
+      "additionalProperties": false
+    },
+    "itemSplit": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "itemId",
+        "at",
+        "leftItemId",
+        "rightItemId"
+      ],
+      "properties": {
+        "type": {
+          "const": "item.split"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "itemId": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        },
+        "at": {
+          "$ref": "common.schema.json#/$defs/time"
+        },
+        "leftItemId": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        },
+        "rightItemId": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        }
+      },
+      "additionalProperties": false
+    },
+    "transitionPut": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "transition"
+      ],
+      "properties": {
+        "type": {
+          "const": "transition.put"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "transition": {
+          "$ref": "project.schema.json#/$defs/transition"
+        }
+      },
+      "additionalProperties": false
+    },
+    "transitionRemove": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "transitionId"
+      ],
+      "properties": {
+        "type": {
+          "const": "transition.remove"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "transitionId": {
+          "$ref": "common.schema.json#/$defs/transitionId"
+        }
+      },
+      "additionalProperties": false
+    },
+    "linkPut": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "link"
+      ],
+      "properties": {
+        "type": {
+          "const": "link.put"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "link": {
+          "$ref": "project.schema.json#/$defs/linkGroup"
+        }
+      },
+      "additionalProperties": false
+    },
+    "linkRemove": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "linkId"
+      ],
+      "properties": {
+        "type": {
+          "const": "link.remove"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "linkId": {
+          "$ref": "common.schema.json#/$defs/linkId"
+        }
+      },
+      "additionalProperties": false
+    },
+    "markerPut": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "marker"
+      ],
+      "properties": {
+        "type": {
+          "const": "marker.put"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "marker": {
+          "$ref": "project.schema.json#/$defs/marker"
+        }
+      },
+      "additionalProperties": false
+    },
+    "markerRemove": {
+      "type": "object",
+      "required": [
+        "type",
+        "sequenceId",
+        "markerId"
+      ],
+      "properties": {
+        "type": {
+          "const": "marker.remove"
+        },
+        "sequenceId": {
+          "$ref": "common.schema.json#/$defs/sequenceId"
+        },
+        "markerId": {
+          "$ref": "common.schema.json#/$defs/markerId"
+        }
+      },
+      "additionalProperties": false
+    },
+    "batch": {
+      "type": "object",
+      "required": [
+        "type",
+        "commands"
+      ],
+      "properties": {
+        "type": {
+          "const": "batch"
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonBatchCommand"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "nonBatchCommand": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/projectUpdate"
+        },
+        {
+          "$ref": "#/$defs/assetPut"
+        },
+        {
+          "$ref": "#/$defs/assetRemove"
+        },
+        {
+          "$ref": "#/$defs/sequencePut"
+        },
+        {
+          "$ref": "#/$defs/sequenceRemove"
+        },
+        {
+          "$ref": "#/$defs/trackPut"
+        },
+        {
+          "$ref": "#/$defs/trackRemove"
+        },
+        {
+          "$ref": "#/$defs/trackReorder"
+        },
+        {
+          "$ref": "#/$defs/itemPut"
+        },
+        {
+          "$ref": "#/$defs/itemRemove"
+        },
+        {
+          "$ref": "#/$defs/itemMove"
+        },
+        {
+          "$ref": "#/$defs/itemTrim"
+        },
+        {
+          "$ref": "#/$defs/itemSplit"
+        },
+        {
+          "$ref": "#/$defs/transitionPut"
+        },
+        {
+          "$ref": "#/$defs/transitionRemove"
+        },
+        {
+          "$ref": "#/$defs/linkPut"
+        },
+        {
+          "$ref": "#/$defs/linkRemove"
+        },
+        {
+          "$ref": "#/$defs/markerPut"
+        },
+        {
+          "$ref": "#/$defs/markerRemove"
+        }
+      ]
+    },
+    "command": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/nonBatchCommand"
+        },
+        {
+          "$ref": "#/$defs/batch"
+        }
+      ]
+    }
+  }
+}

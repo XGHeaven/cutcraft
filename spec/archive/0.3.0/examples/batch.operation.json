@@ -1,0 +1,69 @@
+{
+  "$schema": "https://cutstate.dev/schema/v0.3/operation.schema.json",
+  "specVersion": "0.3.0",
+  "operationId": "op_01a05304-a627-7387-9186-e230900d4270",
+  "projectId": "project_01a05303-e41c-71db-94d6-b4560e27950d",
+  "baseRevision": 7,
+  "actor": {
+    "type": "agent",
+    "id": "actor_01a05304-a627-7387-9186-e2332b2ae049",
+    "displayName": "Editing Agent"
+  },
+  "timestamp": "2026-08-29T03:00:00Z",
+  "intent": "Tighten the second statement and add a review marker.",
+  "command": {
+    "type": "batch",
+    "commands": [
+      {
+        "type": "item.trim",
+        "sequenceId": "seq_01a05303-e41c-71db-94d6-b45c004f2d0f",
+        "itemId": "item_01a05303-e41c-71db-94d6-b465d578351e",
+        "timelineRange": {
+          "start": {
+            "num": 11,
+            "den": 1
+          },
+          "duration": {
+            "num": 9,
+            "den": 1
+          }
+        },
+        "sourceRange": {
+          "start": {
+            "num": 30,
+            "den": 1
+          },
+          "duration": {
+            "num": 9,
+            "den": 1
+          }
+        },
+        "ripple": "remove-gap"
+      },
+      {
+        "type": "marker.put",
+        "sequenceId": "seq_01a05303-e41c-71db-94d6-b45c004f2d0f",
+        "marker": {
+          "id": "marker_01a05303-e41c-71db-94d6-b473d17932d3",
+          "name": "Agent review",
+          "start": {
+            "num": 20,
+            "den": 1
+          },
+          "duration": {
+            "num": 0,
+            "den": 1
+          },
+          "comment": "Verify the shortened payoff cut.",
+          "metadata": {
+            "createdBy": "actor_01a05304-a627-7387-9186-e2332b2ae049"
+          },
+          "extensions": {}
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "requestId": "request-42"
+  }
+}

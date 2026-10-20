@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutstate.dev/schema/v0.3/common.schema.json",
+  "title": "Cutcraft Common Types 0.3.0",
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        }
+      ]
+    },
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^project_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "assetId": {
+      "type": "string",
+      "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "sequenceId": {
+      "type": "string",
+      "pattern": "^seq_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "trackId": {
+      "type": "string",
+      "pattern": "^track_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "itemId": {
+      "type": "string",
+      "pattern": "^item_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "effectId": {
+      "type": "string",
+      "pattern": "^effect_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "transitionId": {
+      "type": "string",
+      "pattern": "^transition_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "linkId": {
+      "type": "string",
+      "pattern": "^link_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "markerId": {
+      "type": "string",
+      "pattern": "^marker_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "operationId": {
+      "type": "string",
+      "pattern": "^op_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^event_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "actorId": {
+      "type": "string",
+      "pattern": "^actor_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "streamId": {
+      "type": "string",
+      "pattern": "^stream_(?:v|a|i|s|d)[0-9]+$"
+    },
+    "entityId": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/projectId"
+        },
+        {
+          "$ref": "#/$defs/assetId"
+        },
+        {
+          "$ref": "#/$defs/sequenceId"
+        },
+        {
+          "$ref": "#/$defs/trackId"
+        },
+        {
+          "$ref": "#/$defs/itemId"
+        },
+        {
+          "$ref": "#/$defs/effectId"
+        },
+        {
+          "$ref": "#/$defs/transitionId"
+        },
+        {
+          "$ref": "#/$defs/linkId"
+        },
+        {
+          "$ref": "#/$defs/markerId"
+        },
+        {
+          "$ref": "#/$defs/operationId"
+        },
+        {
+          "$ref": "#/$defs/eventId"
+        },
+        {
+          "$ref": "#/$defs/actorId"
+        }
+      ]
+    },
+    "extensionKey": {
+      "type": "string",
+      "pattern": "^(?:[a-z][a-z0-9-]*\\.)+[a-z][a-z0-9-]*$",
+      "maxLength": 200
+    },
+    "typeKey": {
+      "type": "string",
+      "pattern": "^(?:builtin\\.[a-z][a-z0-9-]*|(?:[a-z][a-z0-9-]*\\.)+[a-z][a-z0-9-]*)$",
+      "maxLength": 200
+    },
+    "rational": {
+      "type": "object",
+      "required": [
+        "num",
+        "den"
+      ],
+      "properties": {
+        "num": {
+          "type": "integer"
+        },
+        "den": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "rate": {
+      "type": "object",
+      "required": [
+        "num",
+        "den"
+      ],
+      "properties": {
+        "num": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "den": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "time": {
+      "description": "Canonical non-negative presentation time in exact rational seconds. The value is num / den seconds; floating-point seconds and native media timestamps are not allowed.",
+      "type": "object",
+      "required": [
+        "num",
+        "den"
+      ],
+      "properties": {
+        "num": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "den": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "positiveTime": {
+      "description": "Canonical positive duration in exact rational seconds. The value is num / den seconds.",
+      "type": "object",
+      "required": [
+        "num",
+        "den"
+      ],
+      "properties": {
+        "num": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "den": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "timeRange": {
+      "description": "A half-open range [start, start + duration) expressed entirely in canonical rational seconds.",
+      "type": "object",
+      "required": [
+        "start",
+        "duration"
+      ],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/time"
+        },
+        "duration": {
+          "$ref": "#/$defs/positiveTime"
+        }
+      },
+      "additionalProperties": false
+    },
+    "color": {
+      "type": "object",
+      "required": [
+        "r",
+        "g",
+        "b",
+        "a"
+      ],
+      "properties": {
+        "r": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "g": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "b": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "a": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "vector2": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "crop": {
+      "type": "object",
+      "properties": {
+        "top": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "right": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "bottom": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "left": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "transform": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "$ref": "#/$defs/vector2"
+        },
+        "anchor": {
+          "$ref": "#/$defs/vector2"
+        },
+        "scale": {
+          "$ref": "#/$defs/vector2"
+        },
+        "rotationDegrees": {
+          "type": "number"
+        },
+        "crop": {
+          "$ref": "#/$defs/crop"
+        }
+      },
+      "additionalProperties": false
+    },
+    "videoProperties": {
+      "type": "object",
+      "properties": {
+        "transform": {
+          "$ref": "#/$defs/transform"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "blendMode": {
+          "enum": [
+            "normal",
+            "multiply",
+            "screen",
+            "overlay",
+            "darken",
+            "lighten",
+            "add",
+            "subtract"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "audioProperties": {
+      "type": "object",
+      "properties": {
+        "gainDb": {
+          "type": "number",
+          "minimum": -120,
+          "maximum": 24
+        },
+        "pan": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "fadeIn": {
+          "$ref": "#/$defs/time"
+        },
+        "fadeOut": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "keyframe": {
+      "type": "object",
+      "required": [
+        "offset",
+        "value"
+      ],
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/time"
+        },
+        "value": {
+          "$ref": "#/$defs/jsonValue"
+        },
+        "easing": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "automation": {
+      "type": "object",
+      "required": [
+        "parameter",
+        "interpolation",
+        "keyframes"
+      ],
+      "properties": {
+        "parameter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "interpolation": {
+          "enum": [
+            "hold",
+            "linear",
+            "bezier"
+          ]
+        },
+        "keyframes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/keyframe"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "effect": {
+      "type": "object",
+      "required": [
+        "id",
+        "effectType"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/effectId"
+        },
+        "effectType": {
+          "$ref": "#/$defs/typeKey"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        "automation": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/automation"
+          }
+        },
+        "extensions": {
+          "$ref": "#/$defs/extensions"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "$ref": "effect.schema.json"
+        }
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/jsonValue"
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/extensionKey"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/jsonValue"
+      }
+    },
+    "actor": {
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "user",
+            "agent",
+            "system"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/actorId"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "additionalProperties": false
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "severity",
+        "code",
+        "message"
+      ],
+      "properties": {
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entityId": {
+          "$ref": "#/$defs/entityId"
+        },
+        "path": {
+          "type": "string"
+        },
+        "details": {
+          "$ref": "#/$defs/jsonValue"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

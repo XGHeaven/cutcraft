@@ -1,0 +1,1602 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutstate.dev/schema/v0.5/project.schema.json",
+  "title": "Cutcraft Project 0.5.0",
+  "type": "object",
+  "required": [
+    "specVersion",
+    "id",
+    "name",
+    "revision",
+    "createdAt",
+    "updatedAt",
+    "rootSequenceId",
+    "assets",
+    "sequences",
+    "createdWith",
+    "lastModifiedWith",
+    "editors"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri-reference"
+    },
+    "specVersion": {
+      "const": "0.5.0"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/projectId"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rootSequenceId": {
+      "$ref": "common.schema.json#/$defs/sequenceId"
+    },
+    "assets": {
+      "$ref": "#/$defs/assetMap"
+    },
+    "sequences": {
+      "$ref": "#/$defs/sequenceMap"
+    },
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    },
+    "createdWith": {
+      "$ref": "#/$defs/application"
+    },
+    "lastModifiedWith": {
+      "$ref": "#/$defs/application"
+    },
+    "editors": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/application"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "fingerprint": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "videoStreamInfo": {
+      "type": "object",
+      "required": [
+        "width",
+        "height",
+        "pixelAspect"
+      ],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixelAspect": {
+          "$ref": "common.schema.json#/$defs/rate"
+        },
+        "frameRate": {
+          "$ref": "common.schema.json#/$defs/rate"
+        },
+        "colorSpace": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "alphaMode": {
+          "enum": [
+            "none",
+            "straight",
+            "premultiplied"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "audioStreamInfo": {
+      "type": "object",
+      "required": [
+        "sampleRate",
+        "channels"
+      ],
+      "properties": {
+        "sampleRate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "channels": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "layout": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "stream": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "index"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/streamId"
+        },
+        "kind": {
+          "enum": [
+            "video",
+            "audio",
+            "image",
+            "subtitle",
+            "data"
+          ]
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "codec": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "duration": {
+          "$ref": "common.schema.json#/$defs/positiveTime"
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+        },
+        "video": {
+          "$ref": "#/$defs/videoStreamInfo"
+        },
+        "audio": {
+          "$ref": "#/$defs/audioStreamInfo"
+        },
+        "metadata": {
+          "$ref": "common.schema.json#/$defs/metadata"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "video",
+                  "image"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "video"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "audio"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "audio"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "asset": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind",
+        "uri",
+        "storage",
+        "availability",
+        "streams"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "kind": {
+          "enum": [
+            "media",
+            "image",
+            "subtitle",
+            "font",
+            "lut",
+            "other"
+          ]
+        },
+        "uri": {
+          "type": "string",
+          "format": "uri-reference",
+          "minLength": 1
+        },
+        "storage": {
+          "enum": [
+            "managed",
+            "external",
+            "remote",
+            "generated"
+          ]
+        },
+        "availability": {
+          "enum": [
+            "online",
+            "offline",
+            "missing"
+          ]
+        },
+        "mimeType": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "streams": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stream"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "metadata": {
+          "$ref": "common.schema.json#/$defs/metadata"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "source": {
+          "$ref": "#/$defs/imageSequenceSource"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "fingerprint"
+            ],
+            "properties": {
+              "kind": {
+                "const": "media"
+              },
+              "uri": {
+                "pattern": "/$"
+              },
+              "storage": {
+                "enum": [
+                  "managed",
+                  "external"
+                ]
+              },
+              "streams": {
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {
+                  "required": [
+                    "duration",
+                    "video"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "index": {
+                      "const": 0
+                    },
+                    "video": {
+                      "required": [
+                        "frameRate",
+                        "colorSpace",
+                        "alphaMode"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "assetMap": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "common.schema.json#/$defs/assetId"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "sequenceFormat": {
+      "type": "object",
+      "required": [
+        "width",
+        "height",
+        "frameRate",
+        "pixelAspect",
+        "audioSampleRate",
+        "audioChannelLayout"
+      ],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "frameRate": {
+          "$ref": "common.schema.json#/$defs/rate"
+        },
+        "pixelAspect": {
+          "$ref": "common.schema.json#/$defs/rate"
+        },
+        "audioSampleRate": {
+          "type": "integer",
+          "minimum": 8000,
+          "maximum": 384000
+        },
+        "audioChannelLayout": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "colorSpace": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "playback": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "videoSampling": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "method"
+                  ],
+                  "properties": {
+                    "method": {
+                      "enum": [
+                        "frame-hold",
+                        "frame-blend"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "method",
+                    "processor"
+                  ],
+                  "properties": {
+                    "method": {
+                      "const": "optical-flow"
+                    },
+                    "processor": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "version",
+                        "parameters"
+                      ],
+                      "properties": {
+                        "id": {
+                          "$ref": "common.schema.json#/$defs/typeKey"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+                        },
+                        "parameters": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "$ref": "common.schema.json#/$defs/jsonValue"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "audioPolicy": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "mode"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "const": "mute"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "processor"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "resample",
+                        "preserve-pitch"
+                      ]
+                    },
+                    "processor": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "version",
+                        "parameters"
+                      ],
+                      "properties": {
+                        "id": {
+                          "$ref": "common.schema.json#/$defs/typeKey"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+                        },
+                        "parameters": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "$ref": "common.schema.json#/$defs/jsonValue"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "mode": {
+              "enum": [
+                "fit",
+                "loop"
+              ]
+            },
+            "reverse": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "videoSampling": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "method"
+                  ],
+                  "properties": {
+                    "method": {
+                      "enum": [
+                        "frame-hold",
+                        "frame-blend"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "method",
+                    "processor"
+                  ],
+                  "properties": {
+                    "method": {
+                      "const": "optical-flow"
+                    },
+                    "processor": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "version",
+                        "parameters"
+                      ],
+                      "properties": {
+                        "id": {
+                          "$ref": "common.schema.json#/$defs/typeKey"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+                        },
+                        "parameters": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "$ref": "common.schema.json#/$defs/jsonValue"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "audioPolicy": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "mode"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "const": "mute"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "processor"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "resample",
+                        "preserve-pitch"
+                      ]
+                    },
+                    "processor": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "version",
+                        "parameters"
+                      ],
+                      "properties": {
+                        "id": {
+                          "$ref": "common.schema.json#/$defs/typeKey"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+                        },
+                        "parameters": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "$ref": "common.schema.json#/$defs/jsonValue"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "mode": {
+              "const": "hold"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "videoSampling": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "method"
+                  ],
+                  "properties": {
+                    "method": {
+                      "enum": [
+                        "frame-hold",
+                        "frame-blend"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "method",
+                    "processor"
+                  ],
+                  "properties": {
+                    "method": {
+                      "const": "optical-flow"
+                    },
+                    "processor": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "version",
+                        "parameters"
+                      ],
+                      "properties": {
+                        "id": {
+                          "$ref": "common.schema.json#/$defs/typeKey"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+                        },
+                        "parameters": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "$ref": "common.schema.json#/$defs/jsonValue"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "audioPolicy": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "mode"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "const": "mute"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "processor"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "resample",
+                        "preserve-pitch"
+                      ]
+                    },
+                    "processor": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "version",
+                        "parameters"
+                      ],
+                      "properties": {
+                        "id": {
+                          "$ref": "common.schema.json#/$defs/typeKey"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+                        },
+                        "parameters": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "$ref": "common.schema.json#/$defs/jsonValue"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "mode": {
+              "const": "remap"
+            },
+            "version": {
+              "const": "1.0.0"
+            },
+            "timeMap": {
+              "$ref": "animation.schema.json#/$defs/timeAnimation"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "version",
+            "timeMap"
+          ]
+        }
+      ]
+    },
+    "itemBase": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "timelineRange"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        },
+        "type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "timelineRange": {
+          "$ref": "common.schema.json#/$defs/timeRange"
+        },
+        "linkGroupId": {
+          "$ref": "common.schema.json#/$defs/linkId"
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/effect"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "metadata": {
+          "$ref": "common.schema.json#/$defs/metadata"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        }
+      }
+    },
+    "mediaItem": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/itemBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "assetId",
+            "streamId"
+          ],
+          "properties": {
+            "type": {
+              "const": "media"
+            },
+            "assetId": {
+              "$ref": "common.schema.json#/$defs/assetId"
+            },
+            "streamId": {
+              "$ref": "common.schema.json#/$defs/streamId"
+            },
+            "sourceRange": {
+              "$ref": "common.schema.json#/$defs/timeRange"
+            },
+            "playback": {
+              "$ref": "#/$defs/playback"
+            },
+            "video": {
+              "$ref": "common.schema.json#/$defs/videoProperties"
+            },
+            "audio": {
+              "$ref": "common.schema.json#/$defs/audioProperties"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "sequenceItem": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/itemBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "sequenceId",
+            "sourceRange"
+          ],
+          "properties": {
+            "type": {
+              "const": "sequence"
+            },
+            "sequenceId": {
+              "$ref": "common.schema.json#/$defs/sequenceId"
+            },
+            "sourceRange": {
+              "$ref": "common.schema.json#/$defs/timeRange"
+            },
+            "playback": {
+              "$ref": "#/$defs/playback"
+            },
+            "video": {
+              "$ref": "common.schema.json#/$defs/videoProperties"
+            },
+            "audio": {
+              "$ref": "common.schema.json#/$defs/audioProperties"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "generatorItem": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/itemBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "generatorType",
+            "parameters"
+          ],
+          "properties": {
+            "type": {
+              "const": "generator"
+            },
+            "generatorType": {
+              "$ref": "common.schema.json#/$defs/typeKey"
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+            },
+            "parameters": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "common.schema.json#/$defs/jsonValue"
+              }
+            },
+            "video": {
+              "$ref": "common.schema.json#/$defs/videoProperties"
+            },
+            "audio": {
+              "$ref": "common.schema.json#/$defs/audioProperties"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "captionWord": {
+      "type": "object",
+      "required": [
+        "text",
+        "range"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "range": {
+          "$ref": "common.schema.json#/$defs/timeRange"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "captionStyle": {
+      "type": "object",
+      "properties": {
+        "fontAssetId": {
+          "$ref": "common.schema.json#/$defs/assetId"
+        },
+        "fontFamily": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "fontSizePixels": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "color": {
+          "$ref": "common.schema.json#/$defs/color"
+        },
+        "backgroundColor": {
+          "$ref": "common.schema.json#/$defs/color"
+        },
+        "position": {
+          "enum": [
+            "top",
+            "center",
+            "bottom"
+          ]
+        },
+        "align": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "maxLines": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      },
+      "additionalProperties": false
+    },
+    "captionItem": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/itemBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "properties": {
+            "type": {
+              "const": "caption"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "speaker": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "language": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+            },
+            "words": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/captionWord"
+              }
+            },
+            "style": {
+              "$ref": "#/$defs/captionStyle"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "adjustmentItem": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/itemBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "adjustment"
+            },
+            "video": {
+              "$ref": "common.schema.json#/$defs/videoProperties"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "item": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/mediaItem"
+        },
+        {
+          "$ref": "#/$defs/sequenceItem"
+        },
+        {
+          "$ref": "#/$defs/generatorItem"
+        },
+        {
+          "$ref": "#/$defs/captionItem"
+        },
+        {
+          "$ref": "#/$defs/adjustmentItem"
+        }
+      ]
+    },
+    "track": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "overlapPolicy",
+        "items"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/trackId"
+        },
+        "kind": {
+          "enum": [
+            "video",
+            "audio",
+            "subtitle",
+            "data"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "maxLength": 100
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "solo": {
+          "type": "boolean"
+        },
+        "overlapPolicy": {
+          "enum": [
+            "forbid",
+            "transition-only",
+            "allow"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "metadata": {
+          "$ref": "common.schema.json#/$defs/metadata"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "transition": {
+      "type": "object",
+      "required": [
+        "id",
+        "fromItemId",
+        "toItemId",
+        "transitionType",
+        "duration",
+        "alignment"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/transitionId"
+        },
+        "fromItemId": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        },
+        "toItemId": {
+          "$ref": "common.schema.json#/$defs/itemId"
+        },
+        "transitionType": {
+          "$ref": "common.schema.json#/$defs/typeKey"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+        },
+        "duration": {
+          "$ref": "common.schema.json#/$defs/positiveTime"
+        },
+        "alignment": {
+          "enum": [
+            "before",
+            "center",
+            "after"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "common.schema.json#/$defs/jsonValue"
+          }
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "progress": {
+          "allOf": [
+            {
+              "$ref": "animation.schema.json#/$defs/numberAnimation"
+            },
+            {
+              "properties": {
+                "$animation": {
+                  "properties": {
+                    "keyframes": {
+                      "items": {
+                        "properties": {
+                          "value": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "transitionType": {
+                "const": "builtin.crossfade"
+              }
+            },
+            "required": [
+              "transitionType"
+            ]
+          },
+          "then": {
+            "required": [
+              "version"
+            ],
+            "properties": {
+              "version": {
+                "const": "2.0.0"
+              },
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "transitionType": {
+                "const": "builtin.dip-to-color"
+              }
+            },
+            "required": [
+              "transitionType"
+            ]
+          },
+          "then": {
+            "required": [
+              "version",
+              "parameters"
+            ],
+            "properties": {
+              "version": {
+                "const": "2.0.0"
+              },
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "color": {
+                    "type": "object",
+                    "required": [
+                      "r",
+                      "g",
+                      "b",
+                      "a"
+                    ],
+                    "properties": {
+                      "r": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "g": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "b": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "a": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "color"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "linkGroup": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "itemIds"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/linkId"
+        },
+        "kind": {
+          "enum": [
+            "av",
+            "sync",
+            "group"
+          ]
+        },
+        "itemIds": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/itemId"
+          }
+        },
+        "metadata": {
+          "$ref": "common.schema.json#/$defs/metadata"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "marker": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "start",
+        "duration"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/markerId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "start": {
+          "$ref": "common.schema.json#/$defs/time"
+        },
+        "duration": {
+          "$ref": "common.schema.json#/$defs/time"
+        },
+        "color": {
+          "$ref": "common.schema.json#/$defs/color"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "common.schema.json#/$defs/metadata"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sequence": {
+      "type": "object",
+      "required": [
+        "name",
+        "format",
+        "durationMode",
+        "background",
+        "tracks",
+        "transitions",
+        "links",
+        "markers"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "format": {
+          "$ref": "#/$defs/sequenceFormat"
+        },
+        "durationMode": {
+          "enum": [
+            "auto",
+            "fixed"
+          ]
+        },
+        "duration": {
+          "$ref": "common.schema.json#/$defs/positiveTime"
+        },
+        "background": {
+          "$ref": "common.schema.json#/$defs/color"
+        },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/track"
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/transition"
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/linkGroup"
+          }
+        },
+        "markers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/marker"
+          }
+        },
+        "metadata": {
+          "$ref": "common.schema.json#/$defs/metadata"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "durationMode": {
+                "const": "fixed"
+              }
+            },
+            "required": [
+              "durationMode"
+            ]
+          },
+          "then": {
+            "required": [
+              "duration"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "sequenceMap": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "common.schema.json#/$defs/sequenceId"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/sequence"
+      }
+    },
+    "application": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "cli",
+            "desktop",
+            "web",
+            "library"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "imageSequenceFrame": {
+      "type": "object",
+      "required": [
+        "uri",
+        "fingerprint"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "uri-reference",
+          "minLength": 1
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      },
+      "additionalProperties": false
+    },
+    "imageSequenceSource": {
+      "type": "object",
+      "required": [
+        "type",
+        "version",
+        "frames"
+      ],
+      "properties": {
+        "type": {
+          "const": "image-sequence"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "frames": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/$defs/imageSequenceFrame"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

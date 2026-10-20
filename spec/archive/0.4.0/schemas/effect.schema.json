@@ -1,0 +1,619 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutstate.dev/schema/v0.4/effect.schema.json",
+  "title": "Cutcraft built-in effects 0.4.0",
+  "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "effectType": {
+            "const": "builtin.color-grade"
+          }
+        },
+        "required": [
+          "effectType"
+        ]
+      },
+      "then": {
+        "required": [
+          "version",
+          "parameters"
+        ],
+        "properties": {
+          "version": {
+            "enum": [
+              "1.0.0",
+              "2.0.0"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "version": {
+                  "const": "1.0.0"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "exposureEv": {
+                      "type": "number",
+                      "minimum": -20,
+                      "maximum": 20,
+                      "default": 0
+                    },
+                    "temperature": {
+                      "type": "number",
+                      "minimum": -1,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "tint": {
+                      "type": "number",
+                      "minimum": -1,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "contrast": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 4,
+                      "default": 1
+                    },
+                    "pivot": {
+                      "type": "number",
+                      "minimum": 1e-06,
+                      "maximum": 1,
+                      "default": 0.18
+                    },
+                    "saturation": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 4,
+                      "default": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "exposureEv": {
+                      "oneOf": [
+                        {
+                          "type": "number",
+                          "minimum": -20,
+                          "maximum": 20,
+                          "default": 0
+                        },
+                        {
+                          "allOf": [
+                            {
+                              "$ref": "animation.schema.json#/$defs/numberAnimation"
+                            },
+                            {
+                              "properties": {
+                                "$animation": {
+                                  "properties": {
+                                    "keyframes": {
+                                      "items": {
+                                        "properties": {
+                                          "value": {
+                                            "type": "number",
+                                            "minimum": -20,
+                                            "maximum": 20,
+                                            "default": 0
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "temperature": {
+                      "oneOf": [
+                        {
+                          "type": "number",
+                          "minimum": -1,
+                          "maximum": 1,
+                          "default": 0
+                        },
+                        {
+                          "allOf": [
+                            {
+                              "$ref": "animation.schema.json#/$defs/numberAnimation"
+                            },
+                            {
+                              "properties": {
+                                "$animation": {
+                                  "properties": {
+                                    "keyframes": {
+                                      "items": {
+                                        "properties": {
+                                          "value": {
+                                            "type": "number",
+                                            "minimum": -1,
+                                            "maximum": 1,
+                                            "default": 0
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "tint": {
+                      "oneOf": [
+                        {
+                          "type": "number",
+                          "minimum": -1,
+                          "maximum": 1,
+                          "default": 0
+                        },
+                        {
+                          "allOf": [
+                            {
+                              "$ref": "animation.schema.json#/$defs/numberAnimation"
+                            },
+                            {
+                              "properties": {
+                                "$animation": {
+                                  "properties": {
+                                    "keyframes": {
+                                      "items": {
+                                        "properties": {
+                                          "value": {
+                                            "type": "number",
+                                            "minimum": -1,
+                                            "maximum": 1,
+                                            "default": 0
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "contrast": {
+                      "oneOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 4,
+                          "default": 1
+                        },
+                        {
+                          "allOf": [
+                            {
+                              "$ref": "animation.schema.json#/$defs/numberAnimation"
+                            },
+                            {
+                              "properties": {
+                                "$animation": {
+                                  "properties": {
+                                    "keyframes": {
+                                      "items": {
+                                        "properties": {
+                                          "value": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 4,
+                                            "default": 1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "pivot": {
+                      "oneOf": [
+                        {
+                          "type": "number",
+                          "minimum": 1e-06,
+                          "maximum": 1,
+                          "default": 0.18
+                        },
+                        {
+                          "allOf": [
+                            {
+                              "$ref": "animation.schema.json#/$defs/numberAnimation"
+                            },
+                            {
+                              "properties": {
+                                "$animation": {
+                                  "properties": {
+                                    "keyframes": {
+                                      "items": {
+                                        "properties": {
+                                          "value": {
+                                            "type": "number",
+                                            "minimum": 1e-06,
+                                            "maximum": 1,
+                                            "default": 0.18
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "saturation": {
+                      "oneOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 4,
+                          "default": 1
+                        },
+                        {
+                          "allOf": [
+                            {
+                              "$ref": "animation.schema.json#/$defs/numberAnimation"
+                            },
+                            {
+                              "properties": {
+                                "$animation": {
+                                  "properties": {
+                                    "keyframes": {
+                                      "items": {
+                                        "properties": {
+                                          "value": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 4,
+                                            "default": 1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "effectType": {
+            "const": "builtin.curves"
+          }
+        },
+        "required": [
+          "effectType"
+        ]
+      },
+      "then": {
+        "required": [
+          "version",
+          "parameters"
+        ],
+        "properties": {
+          "version": {
+            "const": "1.0.0"
+          },
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "rgb": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "r": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "g": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "b": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "effectType": {
+            "const": "builtin.lut"
+          }
+        },
+        "required": [
+          "effectType"
+        ]
+      },
+      "then": {
+        "required": [
+          "version",
+          "parameters"
+        ],
+        "properties": {
+          "version": {
+            "enum": [
+              "1.0.0",
+              "2.0.0"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "version": {
+                  "const": "1.0.0"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "assetId": {
+                      "$ref": "common.schema.json#/$defs/assetId"
+                    },
+                    "strength": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 1
+                    },
+                    "inputColorSpace": {
+                      "enum": [
+                        "linear-srgb",
+                        "srgb",
+                        "rec709"
+                      ]
+                    },
+                    "outputColorSpace": {
+                      "enum": [
+                        "linear-srgb",
+                        "srgb",
+                        "rec709"
+                      ]
+                    },
+                    "interpolation": {
+                      "enum": [
+                        "linear",
+                        "trilinear",
+                        "tetrahedral"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "assetId",
+                    "inputColorSpace",
+                    "outputColorSpace",
+                    "interpolation"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "assetId": {
+                      "$ref": "common.schema.json#/$defs/assetId"
+                    },
+                    "strength": {
+                      "oneOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1,
+                          "default": 1
+                        },
+                        {
+                          "allOf": [
+                            {
+                              "$ref": "animation.schema.json#/$defs/numberAnimation"
+                            },
+                            {
+                              "properties": {
+                                "$animation": {
+                                  "properties": {
+                                    "keyframes": {
+                                      "items": {
+                                        "properties": {
+                                          "value": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1,
+                                            "default": 1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "inputColorSpace": {
+                      "enum": [
+                        "linear-srgb",
+                        "srgb",
+                        "rec709"
+                      ]
+                    },
+                    "outputColorSpace": {
+                      "enum": [
+                        "linear-srgb",
+                        "srgb",
+                        "rec709"
+                      ]
+                    },
+                    "interpolation": {
+                      "enum": [
+                        "linear",
+                        "trilinear",
+                        "tetrahedral"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "assetId",
+                    "inputColorSpace",
+                    "outputColorSpace",
+                    "interpolation"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

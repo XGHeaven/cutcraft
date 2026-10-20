@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cutcraft:generator:1.0.0",
+  "title": "Cutcraft built-in generator parameters 1.0.0",
+  "type": "object",
+  "required": ["generatorType", "parameters"],
+  "properties": {
+    "generatorType": {"enum": ["builtin.color", "builtin.text", "builtin.silence"]},
+    "version": {"const": "1.0.0"},
+    "parameters": {"type": "object"}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"generatorType": {"const": "builtin.color"}}},
+      "then": {
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "properties": {"color": {"$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"}},
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"generatorType": {"const": "builtin.text"}}},
+      "then": {
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": {"type": "string", "minLength": 1},
+              "fontAssetId": {"$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/assetId"},
+              "fontSizePixels": {"type": "number", "exclusiveMinimum": 0, "maximum": 4096},
+              "color": {"$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"},
+              "align": {"enum": ["left", "center", "right"]},
+              "position": {"enum": ["top", "center", "bottom"]}
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"generatorType": {"const": "builtin.silence"}}},
+      "then": {"properties": {"parameters": {"type": "object", "maxProperties": 0}}}
+    }
+  ]
+}
