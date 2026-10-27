@@ -1,0 +1,136 @@
+{
+  "$schema": "https://cutstate.dev/schema/v0.1/project.schema.json",
+  "specVersion": "0.1.0",
+  "id": "project_01a05303-e41c-71db-94d6-b45752c04a90",
+  "name": "Animated Gaussian Blur",
+  "revision": 0,
+  "createdAt": "2026-08-29T00:00:00Z",
+  "updatedAt": "2026-08-29T00:00:00Z",
+  "rootSequenceId": "seq_01a05304-a627-7387-9186-e2355b04a892",
+  "assets": {},
+  "sequences": {
+    "seq_01a05304-a627-7387-9186-e2355b04a892": {
+      "name": "Main",
+      "format": {
+        "width": 320,
+        "height": 180,
+        "frameRate": {
+          "num": 12,
+          "den": 1
+        },
+        "pixelAspect": {
+          "num": 1,
+          "den": 1
+        },
+        "audioSampleRate": 48000,
+        "audioChannelLayout": "stereo",
+        "colorSpace": "rec709"
+      },
+      "durationMode": "auto",
+      "background": {
+        "r": 0.03,
+        "g": 0.1,
+        "b": 0.3,
+        "a": 1
+      },
+      "tracks": [
+        {
+          "id": "track_01a05304-a627-7387-9186-e2355b04a893",
+          "kind": "video",
+          "name": "Title",
+          "overlapPolicy": "forbid",
+          "items": [
+            {
+              "id": "item_01a05304-a627-7387-9186-e2355b04a894",
+              "type": "generator",
+              "generatorType": "builtin.text",
+              "version": "1.0.0",
+              "parameters": {
+                "text": "Cutcraft",
+                "fontSizePixels": 40,
+                "color": {
+                  "r": 1,
+                  "g": 1,
+                  "b": 1,
+                  "a": 1
+                },
+                "position": "center"
+              },
+              "timelineRange": {
+                "start": {
+                  "num": 0,
+                  "den": 1
+                },
+                "duration": {
+                  "num": 2,
+                  "den": 1
+                }
+              },
+              "effects": [
+                {
+                  "id": "effect_01a05304-a627-7387-9186-e2355b04a895",
+                  "effectType": "builtin.gaussian-blur",
+                  "version": "1.0.0",
+                  "parameters": {
+                    "sigma": {
+                      "$animation": {
+                        "version": "1.0.0",
+                        "valueType": "number",
+                        "timeReference": "owner",
+                        "keyframes": [
+                          {
+                            "offset": {
+                              "num": 0,
+                              "den": 1
+                            },
+                            "value": 0
+                          },
+                          {
+                            "offset": {
+                              "num": 1,
+                              "den": 1
+                            },
+                            "value": 8
+                          },
+                          {
+                            "offset": {
+                              "num": 2,
+                              "den": 1
+                            },
+                            "value": 0
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "transitions": [],
+      "links": [],
+      "markers": []
+    }
+  },
+  "metadata": {},
+  "extensions": {},
+  "createdWith": {
+    "id": "cutcraft.cli",
+    "kind": "cli",
+    "version": "0.1.0"
+  },
+  "lastModifiedWith": {
+    "id": "cutcraft.cli",
+    "kind": "cli",
+    "version": "0.1.0"
+  },
+  "editors": [
+    {
+      "id": "cutcraft.cli",
+      "kind": "cli",
+      "version": "0.1.0"
+    }
+  ]
+}

@@ -64,6 +64,9 @@ cargo install --locked --path .
 
 ## 创建剪辑项目
 
+本机网页编辑器通过 `cutcraft open <项目目录>` 打开，通过 `cutcraft close <项目目录>` 关闭。默认本机访问免登录；只有 `open --host` 指定非 loopback 地址（包括 `0.0.0.0` / `::`）时才启用启动码和会话认证。
+只有已打开项目的 CLI 命令转发到后台；未打开项目仍独立执行。CLI 与网页共用编辑和历史，最后一个项目关闭后释放端口并退出。网页面向 PC 浏览器，采用随窗口调整的素材库、监视器和时间线布局，项目管理、导入/导出和详细属性放在弹窗；预览支持 1× / 0.5× / 0.25×。详见 [本机编辑器](docs/local-editor.md)。
+
 ```sh
 cutcraft init my-film.cut --name 'My film'
 cutcraft -p my-film.cut import /absolute/path/video.mp4 --managed --append --color-space rec709
@@ -180,6 +183,9 @@ Effects 是 Item 的有序组成部分，通过 `item.put` 修改。`*.put` 完�
 ```sh
 cutcraft -p my-film.cut item text --track VIDEO_TRACK_ID --duration 3 --text '你好，Cutcraft' --font-size 64 --position center
 cutcraft -p my-film.cut item caption --track SUBTITLE_TRACK_ID --duration 3 --text-file captions.txt --font-size 32 --color '#ffffffcc'
+cutcraft -p my-film.cut item effect ITEM_ID --kind gaussian-blur --parameters '{"sigma":12}'
+cutcraft -p my-film.cut preview --at 3/2
+cutcraft -p my-film.cut preview --start 1 --duration 2 --scale 0.5
 cutcraft -p my-film.cut preview --progress human
 cutcraft -p my-film.cut render --progress json --output output/final.mp4
 ```
@@ -213,7 +219,7 @@ cutcraft -p my-film.cut validate --level media
 
 支持嵌套序列、调整层、变换／裁剪、调色、RGB 曲线、1D/3D LUT、属性／效果动画、内置转场、精确变速、loop/hold 和带有效时间戳的 VFR。音频支持显式重采样、gain/pan 动画与线性淡化；光流、保音高、自定义插件和非普通混合模式仍明确报错。
 
-`preview` 只导出当前 revision 的低分辨率 MP4，路径通过 JSON 的 `video` / `output` 返回，文件位于项目的 `cache/` 下。最长边限制为 640 像素，最高 24 fps；较小素材不放大，较低帧率保持原值，尺寸取偶数以兼容 H.264。素材解码、特效合成和嵌套序列均使用缩小的画布，编码采用 ultrafast / CRF 28，音频采样率最高 24 kHz。重新运行会重新生成整段序列预览；不再生成 HTML，也不再提供 `--open`。项目格式和正式 `render` 导出参数不变。默认系统字体依赖机器环境；需要固定字幕字体时使用 `style.fontAssetId`。输出像素的可复现性还取决于 FFmpeg、字体和编码配置版本。
+不带选项的 `preview` 导出当前 revision 的低分辨率 MP4，路径通过 JSON 的 `video` / `output` 返回，文件位于项目的 `cache/` 下。最长边限制为 640 像素，最高 24 fps；较小素材不放大，较低帧率保持原值，尺寸取偶数以兼容 H.264。素材解码、特效合成和嵌套序列均使用缩小的画布，编码采用 ultrafast / CRF 28，音频采样率最高 24 kHz。重新运行会重新生成整段序列预览；不再生成 HTML，也不再提供 `--open`。项目格式和正式 `render` 导出参数不变。新增 `preview --at` 导出 PNG，`--start/--duration` 导出带音频的区间 MP4，`--scale` 控制分辨率，复用网页预览引擎；见[单帧与区间预览](docs/preview.md)。默认系统字体依赖机器环境；需要固定字幕字体时使用 `style.fontAssetId`。输出像素的可复现性还取决于 FFmpeg、字体和编码配置版本。
 
 ## 开发
 

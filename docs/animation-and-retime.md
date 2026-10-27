@@ -20,7 +20,7 @@ cutcraft -p film.cut item animate ITEM exposureEv --effect EFFECT_ID --file expo
 cutcraft -p film.cut item animate ITEM strength --effect LUT_EFFECT_ID --file strength.json
 ```
 
-为效果设置动画时，CLI 将对应 color-grade/LUT 效果版本设为 2.0.0。曲线点数组、LUT 资源、插件不认识的参数不能动画化。恢复静态值可使用 `item transform` 或完整的 `item.put`；替换整向量动画之后才能单独修改它的分量。
+为效果设置动画时，CLI 将对应 color-grade/LUT 效果版本设为 2.0.0；gaussian-blur 的 sigma 从效果 1.0.0 起支持动画，保持该版本。曲线点数组、LUT 资源、插件不认识的参数不能动画化。恢复静态值可使用 `item transform` 或完整的 `item.put`；替换整向量动画之后才能单独修改它的分量。
 
 ## 匀速和非匀速
 

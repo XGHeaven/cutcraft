@@ -1,4 +1,4 @@
-# Cutcraft 0.1.0：变换、调色、曲线与 LUT
+# Cutcraft 0.1.0：变换、调色、曲线、LUT 与高斯模糊
 
 本文是 SPEC.md 的规范性组成部分。Schema 验证结构；跨字段约束由 Semantic 校验执行；文件内容、色彩转换与后端能力由 Media 校验执行。保存效果不表示所有后端都能执行它。未实现的启用效果 MUST 报错，不得静默忽略。
 
@@ -24,9 +24,9 @@
 
 `item.effects` 是有序数组，每个 Effect 有稳定 `id`、`effectType`、固定 `version`、`enabled`（默认 true）和 `parameters`。参数属于 Item，而不是共享 Asset。
 
-本文定义的效果只允许在视频轨 Item 上使用，包括 media、sequence、generator 和 adjustment。处理顺序：源颜色解码/转换 → 按数组次序执行颜色效果 → 几何变换 → Item opacity → 图层混合。adjustment 以自身轨道以下已经合成的画面为输入，只在其 timelineRange 内生效；按轨道自下而上、轨道内 Item 的 canonical 顺序求值。它支持 video.opacity（处理结果与原合成画面的混合强度）及 video.transform；未覆盖区域保留原合成画面。
+本文定义的效果只允许在视频轨 Item 上使用，包括 media、sequence、generator 和 adjustment。处理顺序：源颜色解码/转换 → 按数组次序执行效果 → 几何变换 → Item opacity → 图层混合。adjustment 以自身轨道以下已经合成的画面为输入，只在其 timelineRange 内生效；按轨道自下而上、轨道内 Item 的 canonical 顺序求值。它支持 video.opacity（处理结果与原合成画面的混合强度）及 video.transform；未覆盖区域保留原合成画面。
 
-颜色处理使用非预乘 RGB，保持 alpha 不变，合成前再预乘。`builtin.color-grade` 和 `builtin.curves` 在 **linear-sRGB、D65、sRGB/Rec.709 原色**空间运行；后端负责显式转换并在效果间保持颜色空间一致。无法确定输入传递函数、原色或不支持转换时必须报错，不能仅凭文件名猜测。下面的基础效果版本为 `1.0.0`，参数仅支持静态值。`builtin.color-grade` / `builtin.lut` 另支持 `2.0.0`，在注册参数中允许内联 `$animation`，数值公式不变；`builtin.curves` 仍为 `1.0.0`。完整绑定和限制见 [ANIMATION.md](ANIMATION.md)。本版 Effect 不允许旧 automation 字段。
+颜色效果使用非预乘 RGB，保持 alpha 不变，合成前再预乘。`builtin.color-grade` 和 `builtin.curves` 在 **linear-sRGB、D65、sRGB/Rec.709 原色**空间运行；后端负责显式转换并在效果间保持颜色空间一致。无法确定输入传递函数、原色或不支持转换时必须报错，不能仅凭文件名猜测。下面 color-grade、curves、lut 的 `1.0.0` 参数仅支持静态值；gaussian-blur 1.0.0 从首次定义即支持 sigma 动画。`builtin.color-grade` / `builtin.lut` 另支持 `2.0.0`，在注册参数中允许内联 `$animation`，数值公式不变；`builtin.curves` 仍为 `1.0.0`。完整绑定和限制见 [ANIMATION.md](ANIMATION.md)。本版 Effect 不允许旧 automation 字段。
 
 ### 2.1 builtin.color-grade / 1.0.0
 
@@ -59,6 +59,19 @@
 - inputColorSpace 和 outputColorSpace 必填：`linear-srgb`、`srgb` 或 `rec709`。这是 LUT 实際期望/产生的信号编码，不是文件扩展名推断出的属性。此版本不表示 Log 摄像机曲线；此类 LUT 需要未来扩展色彩空间。
 - interpolation 必填：1D 必须为 `linear`，3D 必须为 `trilinear` 或 `tetrahedral`；文件内容和参数不匹配是 Media 错误。
 - 将输入变换到 inputColorSpace，按 DOMAIN 归一化并截断后查表，再将结果从 outputColorSpace 转回工作空间。最终 `out=(1-strength)*original + strength*look`，两项必须在同一 linear-sRGB 空间；保留 alpha。
+
+### 2.4 builtin.gaussian-blur / 1.0.0
+
+```json
+{"id":"effect_01a05303-e41c-71db-94d6-b46f69526ef7","effectType":"builtin.gaussian-blur","version":"1.0.0","parameters":{"sigma":12}}
+```
+
+- `version` 和 `parameters` 必填。唯一参数 `sigma` 可选，默认 0，范围 `[0,100]`，表示各向同性高斯核的标准差，单位为几何变换前原始输入图像的像素。0 严格等价于不处理。未知参数、版本和越界值必须拒绝。
+- 媒体使用原始 stream 尺寸；嵌套使用子序列画布；生成器和调整层使用所属序列画布。预览缩小时，按实际输入宽高与原始宽高的比值分别缩放两轴 sigma，不改写工程参数。
+- `sigma` 可为 number 或通用 `numberAnimation`，时钟为 Item 的 `owner` 局部有理秒，支持 linear、hold、cubic-bezier。关键帧和求值结果必须在上述范围内，裁剪/切分复用通用动画规则。
+- 在 linear-sRGB 中对预乘 RGB 和 alpha 同时卷积，再恢复 straight RGB；全透明像素的隐藏 RGB 不得泄漏。与颜色效果按堆栈顺序执行。
+- 使用可分离离散高斯核：每轴半径 `ceil(3*sigma)`，权重 `exp(-k*k/(2*sigma*sigma))`，归一化后先横向再纵向。输入边界钳位到最近像素，画布不扩张；效果先于 crop/几何变换执行。
+- 这是公开 Spec 0.1.0 的新增内置效果，独立效果版本为 1.0.0；不改变旧效果语义，不升级 CLI 或工程版本。内部 0.3/0.4/0.5 工程不能新增该效果，返回 `PROJECT_UPGRADE_REQUIRED`，不得修改版本冒充迁移。归档 Schema 保持不变。
 
 ## 3. .cube 文件约定
 

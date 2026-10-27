@@ -55,7 +55,7 @@ cutcraft -p PROJECT preview
 - 效果可作用于媒体、颜色／文字生成器、嵌套序列和调整层。子序列使用保留 alpha 的无损中间文件，调整层处理下方已合成画面。
 - 调色／曲线使用 linear-sRGB，LUT 强度也在线性空间混合。不会把编码后的 RGB 直接拿来混合冒充线性混合。
 - 坏文件、LUT 维度与插值不匹配、指纹变化、未知颜色空间、未知效果版本都会报错，既有输出不会被失败任务覆盖。
-- 实现为 CPU 流式参考后端；内存按帧使用，中间文件占磁盘，不保证实时预览。效果动画、自定义插件、Log/HDR 和转场不属于这次内置视觉功能。
+- 实现为 CPU 流式参考后端；内存按帧使用，中间文件占磁盘，不保证实时预览。支持注册效果参数动画与内置转场，见[动画与时间映射](animation-and-retime.md)；自定义插件和 Log/HDR 仍不支持。
 
 ## 完整演示
 
@@ -65,3 +65,26 @@ cargo run --release --example visual_demo -- local-examples/visual-demo.cut
 ```
 
 目标目录必须不存在。演示程序通过 CLI 导入素材、设置变换、叠加调色／曲线／3D LUT，输出 `output/comparison.mp4`：左为原片，中为曝光加曲线，右为暖色 LUT。
+
+## 高斯模糊
+
+公开 Spec 0.1.0 工程可添加 `builtin.gaussian-blur` 1.0.0：
+
+```sh
+cutcraft -p PROJECT item effect ITEM --kind gaussian-blur --parameters '{"sigma":12}'
+cutcraft -p PROJECT item animate ITEM sigma --effect EFFECT_ID --file blur.json
+```
+
+`sigma` 是几何变换前原始输入像素的高斯标准差，范围 0–100，默认 0（不模糊）。
+`blur.json` 使用通用 number 动画，`timeReference: "owner"`；可以先模糊再调色，也可以改变堆栈顺序。
+模糊在 linear-sRGB、预乘 alpha 上执行，透明边缘不会带出隐藏颜色；边界钳位，画布不扩张。
+媒体、嵌套序列、文字/颜色生成器和调整层共用实现，预览按实际输入尺寸缩放 sigma。
+内部 0.3/0.4/0.5 项目不能添加此效果，也不会自动迁移。
+
+例如 `blur.json` 从清晰逐渐变为模糊：
+
+```json
+{"$animation":{"version":"1.0.0","valueType":"number","timeReference":"owner","keyframes":[{"offset":{"num":0,"den":1},"value":0},{"offset":{"num":1,"den":1},"value":12}]}}
+```
+
+片段时长须至少 1 秒。没有新增模糊背景快捷命令；将效果应用于背景片段或调整层即可。

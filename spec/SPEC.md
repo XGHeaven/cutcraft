@@ -438,7 +438,7 @@ PID、文件存在、时间戳都不是锁是否有效的判据。进程正常�
 
 ### 12.5 视觉效果契约
 
-[EFFECTS.md](EFFECTS.md) 定义变换默认值、处理次序、版本化调色、1D 曲线、LUT/.cube 语义。`schemas/effect.schema.json` 对内置参数进行结构验证，且由 Project Schema 直接引用。Semantic 验证曲线横坐标、轨道类型及 LUT 引用。Media 验证 LUT 内容、指纹、色彩空间转换能力、插值匹配及实际效果实现。
+[EFFECTS.md](EFFECTS.md) 定义变换默认值、处理次序、版本化调色、1D 曲线、LUT/.cube 及可动画高斯模糊语义。`schemas/effect.schema.json` 对内置参数进行结构验证，且由 Project Schema 直接引用。Semantic 验证曲线横坐标、轨道类型及 LUT 引用。Media 验证 LUT 内容、指纹、色彩空间转换能力、插值匹配及实际效果实现。
 
 ## 13. 专题规范
 

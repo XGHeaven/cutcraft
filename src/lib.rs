@@ -1,6 +1,10 @@
+pub mod app;
+pub mod capabilities;
+pub mod daemon;
 pub mod edit;
 pub mod media;
 pub mod media_process;
+pub mod preview;
 pub mod progress;
 pub mod project;
 pub mod query;
@@ -9,6 +13,7 @@ pub mod schema;
 pub mod store;
 pub mod time;
 pub mod visual;
+pub mod web;
 
 pub const SPEC_VERSION: &str = "0.1.0";
 pub fn id(prefix: &str) -> String {

@@ -1,13 +1,46 @@
 //! Optional stderr progress. Library calls are silent unless given a reporter.
-use crate::media_process::MediaCommand;
 use anyhow::{ensure, Result};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::{
     cell::RefCell,
-    io::{BufRead, BufReader, Read, Write},
-    process::{Command, Stdio},
+    io::Write,
+    process::{Command, Output},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
+
+/// Shared by a job owner and its worker. Cancellation never publishes output.
+#[derive(Clone, Default)]
+pub struct CancellationToken {
+    cancelled: Arc<AtomicBool>,
+    parent: Option<Arc<CancellationToken>>,
+}
+impl CancellationToken {
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+            || self
+                .parent
+                .as_ref()
+                .is_some_and(|parent| parent.is_cancelled())
+    }
+    pub(crate) fn child(&self) -> Self {
+        Self {
+            cancelled: Arc::new(AtomicBool::new(false)),
+            parent: Some(Arc::new(self.clone())),
+        }
+    }
+    pub fn check(&self) -> Result<()> {
+        ensure!(!self.is_cancelled(), "JOB_CANCELLED");
+        Ok(())
+    }
+}
+pub type ProgressCallback = Arc<dyn Fn(Value) + Send + Sync>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -30,6 +63,8 @@ pub struct Progress {
     mode: Mode,
     started: Instant,
     state: RefCell<State>,
+    cancellation: CancellationToken,
+    callback: Option<ProgressCallback>,
 }
 
 impl Default for Progress {
@@ -43,6 +78,8 @@ impl Progress {
         let now = Instant::now();
         Self {
             mode,
+            cancellation: CancellationToken::default(),
+            callback: None,
             started: now,
             state: RefCell::new(State {
                 phase: "starting",
@@ -53,6 +90,29 @@ impl Progress {
                 emitted: now,
             }),
         }
+    }
+
+    pub fn with_callback(cancellation: CancellationToken, callback: ProgressCallback) -> Self {
+        Self {
+            cancellation,
+            callback: Some(callback),
+            ..Self::default()
+        }
+    }
+    pub fn cancellation(&self) -> CancellationToken {
+        self.cancellation.clone()
+    }
+    pub fn with_cancellation(cancellation: CancellationToken) -> Self {
+        Self {
+            cancellation,
+            ..Self::default()
+        }
+    }
+    pub fn check_cancelled(&self) -> Result<()> {
+        self.cancellation.check()
+    }
+    pub(crate) fn output(&self, command: &mut Command) -> Result<Output> {
+        crate::media_process::output_cancellable(command, &self.cancellation, |_| {})
     }
 
     pub fn start(&self, phase: &'static str, total: Option<u64>, unit: &'static str) {
@@ -68,8 +128,23 @@ impl Progress {
         self.emit("running");
     }
 
+    /// Restore the parent phase after a nested decoder without restarting it
+    /// for every rendered frame (which would flood SSE and reset the ETA).
+    pub(crate) fn advance_phase(
+        &self,
+        phase: &'static str,
+        total: Option<u64>,
+        unit: &'static str,
+        completed: u64,
+    ) {
+        if self.state.borrow().phase != phase {
+            self.start(phase, total, unit);
+        }
+        self.advance(completed);
+    }
+
     pub fn advance(&self, completed: u64) {
-        if self.mode == Mode::None {
+        if self.mode == Mode::None && self.callback.is_none() {
             return;
         }
         let mut state = self.state.borrow_mut();
@@ -109,7 +184,7 @@ impl Progress {
     }
 
     fn emit(&self, status: &str) {
-        if self.mode == Mode::None {
+        if self.mode == Mode::None && self.callback.is_none() {
             return;
         }
         let state = self.state.borrow();
@@ -118,16 +193,19 @@ impl Progress {
             (state.completed > 0)
                 .then(|| elapsed * (n - state.completed) as f64 / state.completed as f64)
         });
+        let value = json!({"type":"progress","phase":state.phase,"status":status,
+            "completed":state.completed,"total":state.total,"unit":state.unit,
+            "elapsedSeconds":self.started.elapsed().as_secs_f64(),"phaseElapsedSeconds":elapsed,
+            "estimatedRemainingPhaseSeconds":eta});
+        if let Some(callback) = &self.callback {
+            callback(value.clone());
+        }
+        if self.mode == Mode::None {
+            return;
+        }
         let mut stderr = std::io::stderr().lock();
         if self.mode == Mode::Json {
-            let _ = writeln!(
-                stderr,
-                "{}",
-                json!({"type":"progress","phase":state.phase,"status":status,
-                "completed":state.completed,"total":state.total,"unit":state.unit,
-                "elapsedSeconds":self.started.elapsed().as_secs_f64(),"phaseElapsedSeconds":elapsed,
-                "estimatedRemainingPhaseSeconds":eta})
-            );
+            let _ = writeln!(stderr, "{}", value);
         } else {
             let total = state.total.map_or_else(|| "?".into(), |n| n.to_string());
             let eta = eta.map_or_else(|| "unknown".into(), |n| format!("~{n:.1}s"));
@@ -162,59 +240,21 @@ impl Progress {
                 "media_microseconds"
             },
         );
-        if self.mode == Mode::None {
-            let output = cmd.media_output()?;
-            ensure!(
-                output.status.success(),
-                "MEDIA_PROCESS_FAILED: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            return Ok(());
-        }
-        cmd.args(["-nostats", "-progress", "pipe:1"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = cmd.media_spawn()?;
-        let stdout = child.stdout.take().unwrap();
-        let mut stderr = child.stderr.take().unwrap();
-        let errors = std::thread::spawn(move || {
-            let mut tail = Vec::new();
-            let mut buf = [0u8; 4096];
-            while let Ok(n) = stderr.read(&mut buf) {
-                if n == 0 {
-                    break;
-                }
-                tail.extend_from_slice(&buf[..n]);
-                if tail.len() > 65536 {
-                    tail.drain(..tail.len() - 65536);
-                }
+        cmd.args(["-nostats", "-progress", "pipe:1"]);
+        let output = crate::media_process::output_cancellable(cmd, &self.cancellation, |line| {
+            let field = if total.is_some() {
+                "frame="
+            } else {
+                "out_time_us="
+            };
+            if let Some(n) = line.strip_prefix(field).and_then(|v| v.trim().parse().ok()) {
+                self.advance(n);
             }
-            tail
-        });
-        let read = (|| -> Result<()> {
-            for line in BufReader::new(stdout).lines() {
-                let line = line?;
-                let field = if total.is_some() {
-                    "frame="
-                } else {
-                    "out_time_us="
-                };
-                if let Some(n) = line.strip_prefix(field).and_then(|v| v.trim().parse().ok()) {
-                    self.advance(n);
-                }
-            }
-            Ok(())
-        })();
-        if read.is_err() {
-            let _ = child.kill();
-        }
-        let status = child.wait();
-        let tail = errors.join().unwrap_or_default();
-        read?;
+        })?;
         ensure!(
-            status?.success(),
+            output.status.success(),
             "MEDIA_PROCESS_FAILED: {}",
-            String::from_utf8_lossy(&tail)
+            String::from_utf8_lossy(&output.stderr)
         );
         if let Some(total) = total {
             self.advance(total);

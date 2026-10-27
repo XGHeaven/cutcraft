@@ -280,6 +280,9 @@ impl Space {
 }
 #[derive(Clone)]
 enum Effect {
+    Blur {
+        sigma: [f64; 2],
+    },
     Grade {
         gain: [f64; 3],
         contrast: f64,
@@ -325,6 +328,25 @@ impl Pipeline {
             );
             let p = &e["parameters"];
             effects.push(match text(&e["effectType"]) {
+                "builtin.gaussian-blur" => {
+                    ensure!(
+                        e["version"] == "1.0.0",
+                        "EFFECT_UNSUPPORTED: gaussian-blur version"
+                    );
+                    let sigma = if p["sigma"].is_null() {
+                        0.
+                    } else {
+                        p["sigma"].as_f64().context("INVALID_BLUR_SIGMA")?
+                    };
+                    ensure!(
+                        sigma.is_finite() && (0.0..=100.0).contains(&sigma),
+                        "INVALID_BLUR_SIGMA"
+                    );
+                    if sigma == 0. {
+                        continue;
+                    }
+                    Effect::Blur { sigma: [sigma; 2] }
+                }
                 "builtin.color-grade" => {
                     let exposure = number(p, "exposureEv", 0.);
                     let temp = number(p, "temperature", 0.);
@@ -374,44 +396,155 @@ impl Pipeline {
         }
         Ok(Self { effects, input })
     }
+    pub(crate) fn passthrough(&self) -> bool {
+        self.effects.is_empty() && matches!(self.input, Space::Rec709)
+    }
+    pub(crate) fn spatial(&self) -> bool {
+        self.effects
+            .iter()
+            .any(|e| matches!(e, Effect::Blur { .. }))
+    }
+    /// Account for reduced decoder/canvas dimensions without changing effect data.
+    pub(crate) fn source_scale(mut self, x: f64, y: f64) -> Self {
+        for e in &mut self.effects {
+            if let Effect::Blur { sigma } = e {
+                sigma[0] *= x;
+                sigma[1] *= y;
+            }
+        }
+        self
+    }
+    fn frame(&self, pixels: &mut [[f64; 4]], w: usize, h: usize) {
+        if !self.spatial() {
+            for p in pixels {
+                let rgb = self.pixel([p[0], p[1], p[2]]);
+                p[..3].copy_from_slice(&rgb);
+            }
+            return;
+        }
+        for p in pixels.iter_mut() {
+            for c in &mut p[..3] {
+                *c = self.input.decode(*c);
+            }
+        }
+        for effect in &self.effects {
+            match effect {
+                Effect::Blur { sigma } => gaussian_blur(pixels, w, h, *sigma),
+                _ => {
+                    for p in pixels.iter_mut() {
+                        let rgb = effect.pixel([p[0], p[1], p[2]]);
+                        p[..3].copy_from_slice(&rgb);
+                    }
+                }
+            }
+        }
+        for p in pixels {
+            for c in &mut p[..3] {
+                *c = Space::Rec709.encode(*c).clamp(0., 1.);
+            }
+        }
+    }
     pub fn pixel(&self, mut rgb: [f64; 3]) -> [f64; 3] {
         rgb = rgb.map(|v| self.input.decode(v));
         for e in &self.effects {
-            match e {
-                Effect::Grade {
-                    gain,
-                    contrast,
-                    pivot,
-                    saturation,
-                } => {
-                    for i in 0..3 {
-                        rgb[i] = (rgb[i] * gain[i] - pivot) * contrast + pivot;
-                    }
-                    let y = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-                    rgb = rgb.map(|c| (y + (c - y) * saturation).clamp(0., 1.));
-                }
-                Effect::Curves(curves) => {
-                    rgb = std::array::from_fn(|i| {
-                        curve(&curves[i + 1], curve(&curves[0], rgb[i].clamp(0., 1.)))
-                    });
-                }
-                Effect::Lut {
-                    cube,
-                    strength,
-                    input,
-                    output,
-                    tetrahedral,
-                } => {
-                    let look = cube
-                        .sample(rgb.map(|c| input.encode(c)), *tetrahedral)
-                        .map(|c| output.decode(c));
-                    rgb = std::array::from_fn(|i| (1. - strength) * rgb[i] + strength * look[i]);
-                }
-            }
+            rgb = e.pixel(rgb);
         }
         rgb.map(|c| Space::Rec709.encode(c).clamp(0., 1.))
     }
 }
+impl Effect {
+    fn pixel(&self, mut rgb: [f64; 3]) -> [f64; 3] {
+        match self {
+            Effect::Blur { .. } => unreachable!("spatial effect requires a complete frame"),
+            Effect::Grade {
+                gain,
+                contrast,
+                pivot,
+                saturation,
+            } => {
+                for i in 0..3 {
+                    rgb[i] = (rgb[i] * gain[i] - pivot) * contrast + pivot;
+                }
+                let y = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+                rgb = rgb.map(|c| (y + (c - y) * saturation).clamp(0., 1.));
+            }
+            Effect::Curves(curves) => {
+                rgb = std::array::from_fn(|i| {
+                    curve(&curves[i + 1], curve(&curves[0], rgb[i].clamp(0., 1.)))
+                });
+            }
+            Effect::Lut {
+                cube,
+                strength,
+                input,
+                output,
+                tetrahedral,
+            } => {
+                let look = cube
+                    .sample(rgb.map(|c| input.encode(c)), *tetrahedral)
+                    .map(|c| output.decode(c));
+                rgb = std::array::from_fn(|i| (1. - strength) * rgb[i] + strength * look[i]);
+            }
+        }
+        rgb
+    }
+}
+
+/// Separable Gaussian on linear premultiplied RGBA, with clamped boundaries.
+fn gaussian_blur(pixels: &mut [[f64; 4]], w: usize, h: usize, sigma: [f64; 2]) {
+    if sigma == [0.; 2] {
+        return;
+    }
+    for p in pixels.iter_mut() {
+        for i in 0..3 {
+            p[i] *= p[3];
+        }
+    }
+    let mut scratch = vec![[0.; 4]; pixels.len()];
+    for (axis, sigma) in sigma.into_iter().enumerate() {
+        if sigma == 0. {
+            continue;
+        }
+        let radius = (3. * sigma).ceil() as isize;
+        let mut weights: Vec<_> = (-radius..=radius)
+            .map(|k| {
+                let x = k as f64 / sigma;
+                (-0.5 * x * x).exp()
+            })
+            .collect();
+        let sum: f64 = weights.iter().sum();
+        for v in &mut weights {
+            *v /= sum;
+        }
+        for y in 0..h {
+            for x in 0..w {
+                let mut out = [0.; 4];
+                for (k, weight) in (-radius..=radius).zip(&weights) {
+                    let (xx, yy) = if axis == 0 {
+                        ((x as isize + k).clamp(0, w as isize - 1) as usize, y)
+                    } else {
+                        (x, (y as isize + k).clamp(0, h as isize - 1) as usize)
+                    };
+                    for (c, v) in out.iter_mut().zip(pixels[yy * w + xx]) {
+                        *c += v * weight;
+                    }
+                }
+                scratch[y * w + x] = out;
+            }
+        }
+        pixels.copy_from_slice(&scratch);
+    }
+    for p in pixels {
+        if p[3] > 0. {
+            for i in 0..3 {
+                p[i] /= p[3];
+            }
+        } else {
+            *p = [0.; 4];
+        }
+    }
+}
+
 fn curve(points: &[[f64; 2]], x: f64) -> f64 {
     if points.is_empty() {
         return x;
@@ -485,6 +618,13 @@ impl Geometry {
             empty,
         })
     }
+    pub(crate) fn identity(&self) -> bool {
+        !self.empty
+            && self.sw == self.w
+            && self.sh == self.h
+            && self.matrix == [1., 0., 0., 0., 1., 0.]
+            && self.crop == [0., 0., self.sw as f64, self.sh as f64]
+    }
     pub fn frame(&self, source: &[u8], pipeline: Option<&Pipeline>, output: &mut [u8]) {
         output.fill(0);
         if self.empty {
@@ -495,10 +635,11 @@ impl Geometry {
             for i in 0..4 {
                 pixel[i] = u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]]) as f64 / 65535.;
             }
-            if let Some(p) = pipeline {
-                let rgb = p.pixel([pixel[0], pixel[1], pixel[2]]);
-                pixel[..3].copy_from_slice(&rgb);
-            }
+        }
+        if let Some(p) = pipeline {
+            p.frame(&mut pixels, self.sw, self.sh);
+        }
+        for pixel in &mut pixels {
             for i in 0..3 {
                 pixel[i] *= pixel[3];
             }

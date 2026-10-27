@@ -102,3 +102,9 @@ cutcraft -p PROJECT item animate ITEM strength --effect EFFECT_ID --file strengt
 Read the imported LUT asset ID from output. Select input/output color spaces from the LUT's intended encoding, not its `.cube` extension. Supported 1D LUTs use `linear`; 3D LUTs use `trilinear` or `tetrahedral`. Combined shaper/3D files and Log/HDR are unsupported. `builtin.curves` provides static RGB point arrays; use `schema effect` for ranges and shape.
 
 Animating color-grade numeric parameters or LUT strength sets effect version 2.0.0. Color-grade properties are exposureEv, temperature, tint, contrast, pivot and saturation. LUT asset ID, interpolation/color-space selection and curve point arrays remain static. Effect order matters; unavailable effects must fail rather than silently disappear.
+
+## 高斯模糊（公开 Spec 0.1.0）
+
+`item effect ITEM --kind gaussian-blur --parameters '{"sigma":12}'` 添加内置模糊 1.0.0。
+`sigma` 范围 0–100，单位为变换前原始输入像素，默认 0；可用 `item animate ITEM sigma --effect EFFECT_ID --file curve.json` 绑定 owner 时钟 number 动画。
+预览自动缩放模糊尺度；效果按数组顺序执行，支持媒体、生成器、嵌套和调整层。内部 0.3/0.4/0.5 不支持此效果，不得改版本字段绕过。

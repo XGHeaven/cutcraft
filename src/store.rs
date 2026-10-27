@@ -190,6 +190,68 @@ impl Store {
         op["metadata"] = json!({"undoOf":last["eventId"]});
         self.apply(&op, override_locks, dry_run)
     }
+    /// Shared, multi-step history. Legacy `undoOf` entries remain ordinary edits.
+    pub fn history_state(&self) -> Result<Value> {
+        let history = self.history()?;
+        let (undo, redo) = history_stacks(&history);
+        Ok(
+            json!({"canUndo":!undo.is_empty(),"canRedo":!redo.is_empty(),
+            "undoEventId":undo.last().map(|i| &history[*i]["eventId"]),
+            "redoEventId":redo.last().map(|i| &history[*i]["eventId"])}),
+        )
+    }
+    pub fn history_undo(&self, override_locks: bool, dry_run: bool) -> Result<Value> {
+        self.history_action(false, override_locks, dry_run)
+    }
+    pub fn history_redo(&self, override_locks: bool, dry_run: bool) -> Result<Value> {
+        self.history_action(true, override_locks, dry_run)
+    }
+    fn history_action(
+        &self,
+        redo_action: bool,
+        override_locks: bool,
+        dry_run: bool,
+    ) -> Result<Value> {
+        let history = self.history()?;
+        let project = self.project()?;
+        let mut previous: Option<&Value> = None;
+        for event in history.iter().filter(|e| e["status"] == "applied") {
+            if let Some(before) = previous {
+                ensure!(
+                    event["revisionBefore"] == before["revisionAfter"]
+                        && event["projectHashBefore"] == before["projectHashAfter"],
+                    "UNDO_CONFLICT: discontinuous project history"
+                );
+            }
+            previous = Some(event);
+        }
+        let last = previous.context("no applied operation to undo")?;
+        ensure!(
+            last["revisionAfter"] == project["revision"]
+                && last["projectHashAfter"] == hash(&project)?,
+            "UNDO_CONFLICT: snapshot differs from latest event"
+        );
+        let (undo, redo) = history_stacks(&history);
+        let index = if redo_action {
+            redo.last()
+        } else {
+            undo.last()
+        }
+        .context(if redo_action {
+            "NOTHING_TO_REDO"
+        } else {
+            "NOTHING_TO_UNDO"
+        })?;
+        let target = &history[*index];
+        let commands = target["inverseCommands"]
+            .as_array()
+            .filter(|v| !v.is_empty())
+            .context("event has no inverse commands")?;
+        let mut operation = edit::operation(&project, json!({"type":"batch","commands":commands}));
+        operation["metadata"] = json!({"cutcraft.history":{"version":1,
+            "action":if redo_action {"redo"} else {"undo"},"targetEventId":target["eventId"]}});
+        self.apply(&operation, override_locks, dry_run)
+    }
     fn commit(&self, project: &Value, history: &[Value]) -> Result<()> {
         let mut log = String::new();
         for event in history {
@@ -225,6 +287,41 @@ impl Store {
         sync_dir(&self.dir.join(".cutcraft"))?;
         Ok(())
     }
+}
+
+fn history_stacks(history: &[Value]) -> (Vec<usize>, Vec<usize>) {
+    let mut undo: Vec<usize> = Vec::new();
+    let mut redo: Vec<usize> = Vec::new();
+    for (index, event) in history
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e["status"] == "applied")
+    {
+        let marker = &event["metadata"]["cutcraft.history"];
+        let action = marker["action"].as_str().unwrap_or("");
+        let target = match action {
+            "undo" => undo.last(),
+            "redo" => redo.last(),
+            _ => None,
+        };
+        let valid = marker["version"] == 1
+            && target.is_some_and(|i| {
+                marker["targetEventId"] == history[*i]["eventId"]
+                    && event["command"]
+                        == json!({"type":"batch","commands":history[*i]["inverseCommands"]})
+            });
+        if valid && action == "undo" {
+            undo.pop();
+            redo.push(index);
+        } else if valid && action == "redo" {
+            redo.pop();
+            undo.push(index);
+        } else {
+            undo.push(index);
+            redo.clear();
+        }
+    }
+    (undo, redo)
 }
 
 #[cfg(test)]

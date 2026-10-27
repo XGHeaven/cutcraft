@@ -20,6 +20,7 @@ pub fn fingerprint(path: &Path) -> Result<String> {
     let mut hash = Sha256::new();
     let mut buf = [0u8; 65536];
     loop {
+        crate::media_process::check_cancellation()?;
         let n = file.read(&mut buf)?;
         if n == 0 {
             break;
@@ -27,6 +28,21 @@ pub fn fingerprint(path: &Path) -> Result<String> {
         hash.update(&buf[..n]);
     }
     Ok(format!("{:x}", hash.finalize()))
+}
+
+pub(crate) fn copy_cancellable(
+    input: &mut impl std::io::Read,
+    output: &mut impl std::io::Write,
+) -> Result<()> {
+    let mut buffer = [0_u8; 65536];
+    loop {
+        crate::media_process::check_cancellation()?;
+        let count = input.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(());
+        }
+        output.write_all(&buffer[..count])?;
+    }
 }
 pub fn probe(path: &Path) -> Result<Value> {
     let output = Command::new("ffprobe")
@@ -152,12 +168,31 @@ pub fn local_path(dir: &Path, uri: &str) -> Result<PathBuf> {
 pub fn import(store: &crate::store::Store, path: &Path, managed: bool) -> Result<Value> {
     import_with_color(store, path, managed, None)
 }
+pub struct PreparedImport {
+    pub asset_id: String,
+    asset: Value,
+    staged: Option<(tempfile::NamedTempFile, PathBuf)>,
+}
+
 pub fn import_with_color(
     store: &crate::store::Store,
     path: &Path,
     managed: bool,
     color_space: Option<&str>,
 ) -> Result<Value> {
+    commit_import(
+        store,
+        prepare_import(&store.dir, path, managed, color_space)?,
+    )
+}
+
+/// Probe, hash and copy without holding the project editing lock.
+pub fn prepare_import(
+    dir: &Path,
+    path: &Path,
+    managed: bool,
+    color_space: Option<&str>,
+) -> Result<PreparedImport> {
     let path = path.canonicalize()?;
     ensure!(path.is_file(), "asset must be a file");
     let aid = id("asset");
@@ -168,7 +203,7 @@ pub fn import_with_color(
             .as_str(),
         false,
     )?;
-    let mut copied = None;
+    let mut staged = None;
     if let Some(space) = color_space {
         crate::visual::Space::parse(space)?;
         ensure!(
@@ -184,30 +219,50 @@ pub fn import_with_color(
     if managed {
         let ext = path.extension().and_then(|v| v.to_str()).unwrap_or("bin");
         let rel = format!("assets/{aid}.{ext}");
-        let dest = store.dir.join(&rel);
+        let dest = dir.join(&rel);
         let mut input = File::open(&path)?;
-        let mut tmp = tempfile::NamedTempFile::new_in(store.dir.join("assets"))?;
-        std::io::copy(&mut input, &mut tmp)?;
+        let mut tmp = tempfile::NamedTempFile::new_in(dir.join("assets"))?;
+        copy_cancellable(&mut input, &mut tmp)?;
         tmp.as_file().sync_all()?;
-        tmp.persist_noclobber(&dest).map_err(|e| e.error)?;
         ensure!(
-            fingerprint(&dest)? == text(&asset["fingerprint"]["value"]),
+            fingerprint(tmp.path())? == text(&asset["fingerprint"]["value"]),
             "source changed during import"
         );
         // URL-encode each path segment, retaining relative project portability.
-        let base = url::Url::from_directory_path(&store.dir).unwrap();
+        let base = url::Url::from_directory_path(dir).unwrap();
         asset["uri"] = json!(base
             .make_relative(&url::Url::from_file_path(&dest).unwrap())
             .unwrap());
         asset["storage"] = json!("managed");
-        copied = Some(dest);
+        staged = Some((tmp, dest));
     } else {
-        let base = url::Url::from_directory_path(&store.dir).unwrap();
+        let base = url::Url::from_directory_path(dir).unwrap();
         let target = url::Url::from_file_path(&path).unwrap();
         asset["uri"] = json!(base
             .make_relative(&target)
             .unwrap_or_else(|| target.to_string()));
     }
+    Ok(PreparedImport {
+        asset_id: aid,
+        asset,
+        staged,
+    })
+}
+
+/// Publish prepared media and commit its asset through the durable Store.
+pub fn commit_import(store: &crate::store::Store, prepared: PreparedImport) -> Result<Value> {
+    let PreparedImport {
+        asset_id: aid,
+        asset,
+        staged,
+    } = prepared;
+    let copied = if let Some((temp, dest)) = staged {
+        temp.persist_noclobber(&dest).map_err(|e| e.error)?;
+        crate::store::sync_dir(dest.parent().context("asset has no parent")?)?;
+        Some(dest)
+    } else {
+        None
+    };
     let result = store.command(
         json!({"type":"asset.put","assetId":aid,"asset":asset}),
         false,
@@ -222,6 +277,7 @@ pub fn import_with_color(
     result["assetId"] = json!(aid);
     Ok(result)
 }
+
 pub fn validate(project: &Value, dir: &Path) -> Result<Value> {
     crate::project::validate(project)?;
     if crate::frame_render::required(project) {

@@ -11,6 +11,7 @@ Operate the installed Rust CLI to create a reviewable project and the requested 
 
 | User task | Implemented tools | Details to read when needed |
 | --- | --- | --- |
+| Open a shared browser editing session | open/close, history undo/redo; modal workflows and adjustable preview resolution; CLI routes only opened projects | [Editing guide: local collaboration](references/editing-guide.md#本机共同编辑) |
 | Set up or inspect a project; organize assets | init, inspect, probe, import, project/asset commands | [Editing guide: projects and media](references/editing-guide.md#projects-and-media) |
 | Find an asset or locate its timeline uses | asset search/list/info/usages; item search/list/info; sequence/track list; sequence usages | [Editing guide: search and locate](references/editing-guide.md#search-and-locate) |
 | Assemble clips and manage layers | sequence/track creation; item add/move/trim/split/remove; ripple and A/V links | [Editing guide: sequences, tracks and cuts](references/editing-guide.md#sequences-tracks-and-cuts) |
@@ -84,3 +85,5 @@ Keep original/managed media in `assets/` or at its referenced location, generate
 Return the project path and exported video path, with a brief account of the edit, checks and any unresolved limitation. Do not claim a video exists just because project edits succeeded.
 
 For long renders/previews, use `--progress json` and consume stderr JSONL while preserving stdout for the final result. Native `item text` and styled `item caption` keep simple titles/subtitles editable; see [editing guide](references/editing-guide.md) for flags and layout limits.
+
+高斯模糊使用 `item effect --kind gaussian-blur`，支持 sigma 动画，见 motion-and-effects；快速检查使用 `preview --at` 或 `--start/--duration`，见 editing-guide。

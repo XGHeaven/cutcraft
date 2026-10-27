@@ -614,6 +614,71 @@
           }
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "effectType": {
+            "const": "builtin.gaussian-blur"
+          }
+        },
+        "required": [
+          "effectType"
+        ]
+      },
+      "then": {
+        "required": [
+          "version",
+          "parameters"
+        ],
+        "properties": {
+          "version": {
+            "const": "1.0.0"
+          },
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "sigma": {
+                "oneOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "default": 0
+                  },
+                  {
+                    "allOf": [
+                      {
+                        "$ref": "animation.schema.json#/$defs/numberAnimation"
+                      },
+                      {
+                        "properties": {
+                          "$animation": {
+                            "properties": {
+                              "keyframes": {
+                                "items": {
+                                  "properties": {
+                                    "value": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 100
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
     }
   ]
 }

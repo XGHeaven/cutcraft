@@ -5,7 +5,31 @@ use crate::{
 };
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+
+thread_local! {
+    static EXECUTION_CONTEXT: RefCell<Option<(Value, Value)>> = const { RefCell::new(None) };
+}
+
+/// Scope client attribution to one synchronous host execution, including unwinding.
+pub fn with_context<T>(application: Value, actor: Value, run: impl FnOnce() -> T) -> T {
+    struct Reset(Option<(Value, Value)>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            EXECUTION_CONTEXT.with(|context| *context.borrow_mut() = self.0.take());
+        }
+    }
+    let _reset =
+        Reset(EXECUTION_CONTEXT.with(|context| context.replace(Some((application, actor)))));
+    run()
+}
+
+pub(crate) fn execution_actor() -> Value {
+    EXECUTION_CONTEXT
+        .with(|context| context.borrow().as_ref().map(|(_, actor)| actor.clone()))
+        .unwrap_or_else(|| json!({"type":"user","id":id("actor"),"displayName":"Cutcraft CLI"}))
+}
 
 pub fn new(name: &str) -> Value {
     let seq = id("seq");
@@ -34,7 +58,16 @@ pub fn new(name: &str) -> Value {
     project
 }
 pub fn application() -> Value {
-    json!({"id":"cutcraft.cli","kind":"cli","version":env!("CARGO_PKG_VERSION")})
+    EXECUTION_CONTEXT
+        .with(|context| {
+            context
+                .borrow()
+                .as_ref()
+                .map(|(application, _)| application.clone())
+        })
+        .unwrap_or_else(
+            || json!({"id":"cutcraft.cli","kind":"cli","version":env!("CARGO_PKG_VERSION")}),
+        )
 }
 pub fn record_editor(project: &mut Value) {
     let client = application();
@@ -295,11 +328,18 @@ pub fn validate(project: &Value) -> Result<()> {
                 );
                 for effect in array(&item["effects"]) {
                     claim(&mut ids, effect)?;
+                    if effect["effectType"] == "builtin.gaussian-blur" {
+                        ensure!(crate::capabilities::supports(text(&project["specVersion"]), crate::capabilities::Capability::GaussianBlur),
+                            "PROJECT_UPGRADE_REQUIRED: gaussian-blur requires a supported project version; create a new public project (no in-place migration)");
+                    }
                     match text(&effect["effectType"]) {
-                        "builtin.lut" | "builtin.curves" | "builtin.color-grade" => {
+                        "builtin.lut"
+                        | "builtin.curves"
+                        | "builtin.color-grade"
+                        | "builtin.gaussian-blur" => {
                             ensure!(
                                 text(&track["kind"]) == "video",
-                                "color effects require a video track"
+                                "visual effects require a video track"
                             );
                             // Version 1.0 has static color parameters. Do not accept
                             // automation whose interpolation semantics are undefined.

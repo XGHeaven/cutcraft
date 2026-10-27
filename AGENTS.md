@@ -5,6 +5,7 @@
 ## 项目定位与依据
 
 - Cutcraft 是以 JSON 工程为核心的 Rust 剪辑 CLI。CLI 和未来客户端应复用同一套领域语义，协议不得绑定某个 UI、脚本语言或 FFmpeg 命令行。
+- CLI 与本机网页编辑器共用 ApplicationHost。`open` 注册真实项目路径，`close` 注销；只转发已打开项目，未打开项目在 CLI 进程内执行。最后一个项目关闭后服务退出；导入/导出忙碌时拒绝关闭。浏览器断开不等于关闭项目。默认 loopback 监听免认证；`open --host` 指定非 loopback（含通配地址）时启用启动码/会话认证，两种模式均保留 Host/Origin 检查。参见 [本机编辑器](docs/local-editor.md)。
 - 新项目采用首个公开 Spec **0.1.0**，入口是 [规范总览](spec/README.md) 与 `spec/schemas/`。基础领域、效果、动画/转场、时间重映射及图片序列分别定义于同目录的 SPEC、DOMAIN_MODEL、EFFECTS、ANIMATION、RETIME 和 IMAGE_SEQUENCES 文档。
 - 未发布内部 0.3/0.4/0.5 资源位于 [archive](spec/archive/README.md)，仅用于兼容与回归；不能按版本号大小判断其功能与公开 0.1.0 的关系。新增协议能力修改现行规范，不重新解释归档 Schema。
 - [实现状态](docs/implementation.md) 说明实际支持边界，`src/schema.rs` 注册离线 Schema。旧文档可能保留 `working/` 等历史布局；当前新工程使用 `cache/`。发现规范、Schema、实现不一致时明确指出并修正，不通过放宽校验掩盖问题。

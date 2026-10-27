@@ -47,13 +47,18 @@ pub fn animate(item: &mut Value, property: &str, effect: Option<&str>, value: Va
                 "saturation",
             ],
             "builtin.lut" => &["strength"],
+            "builtin.gaussian-blur" => &["sigma"],
             _ => &[],
         };
         ensure!(
             fields.contains(&property),
             "unregistered effect animation property"
         );
-        e["version"] = json!("2.0.0");
+        e["version"] = json!(if e["effectType"] == "builtin.gaussian-blur" {
+            "1.0.0"
+        } else {
+            "2.0.0"
+        });
         e["parameters"][property] = value;
     } else {
         ensure!(

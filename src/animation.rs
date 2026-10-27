@@ -275,6 +275,7 @@ pub fn slots(item: &mut Value, mut f: impl FnMut(&mut Value) -> Result<()>) -> R
                 "saturation",
             ],
             ("builtin.lut", "2.0.0") => &["strength"],
+            ("builtin.gaussian-blur", "1.0.0") => &["sigma"],
             _ => &[],
         };
         for k in fields {

@@ -124,6 +124,7 @@ number 和 vector2 默认 linear；boolean/string 默认且只能为 hold。time
 | audio.gainDb / pan | number | 沿用静态范围；音频采样时钟 |
 | builtin.color-grade 2.0.0 的数值参数 | number | 沿用各参数范围 |
 | builtin.lut 2.0.0 的 strength | number | `[0,1]`；LUT 本身保持固定 |
+| builtin.gaussian-blur 1.0.0 的 sigma | number | `[0,100]`，原始输入像素；owner 时钟 |
 | Transition.progress | number 动画 | `[0,1]`，额外端点规则见第 7 节 |
 
 LUT assetId、插值算法、色彩空间、曲线点数组、文件路径、实体 ID、timelineRange、sourceRange、轨道顺序、specVersion、应用版本、Effect.enabled 和 Item.enabled 本版都**不能动画化**。这些值涉及引用、图结构、媒体调度或算法选择，必须通过编辑命令修改。boolean/string/color 是可复用基础类型，首批核心槽位尚未开放；插件可通过自己的固定版本 Schema 明确采用。

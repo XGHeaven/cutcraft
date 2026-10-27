@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn operation(project: &Value, command: Value) -> Value {
-    json!({"specVersion":project["specVersion"],"operationId":id("op"),"projectId":project["id"],"baseRevision":project["revision"],"actor":{"type":"user","id":id("actor"),"displayName":"Cutcraft CLI"},"timestamp":now(),"command":command})
+    json!({"specVersion":project["specVersion"],"operationId":id("op"),"projectId":project["id"],"baseRevision":project["revision"],"actor":project::execution_actor(),"timestamp":now(),"command":command})
 }
 pub fn apply(project: &Value, operation: &Value, override_locks: bool) -> Result<(Value, Value)> {
     project::validate(project)?;

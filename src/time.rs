@@ -8,6 +8,24 @@ use std::{fmt, str::FromStr};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Time(pub BigRational);
+impl serde::Serialize for Time {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        self.json()
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+impl<'de> serde::Deserialize<'de> for Time {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let value = <Value as serde::Deserialize>::deserialize(deserializer)?;
+        Self::from_json(&value).map_err(serde::de::Error::custom)
+    }
+}
 impl Time {
     pub fn zero() -> Self {
         Self(BigRational::zero())

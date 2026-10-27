@@ -16,9 +16,48 @@ use std::{
     io::{BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::Command,
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
+static WINDOW_BUILD: Mutex<()> = Mutex::new(());
+static WINDOW_LEASES: OnceLock<Mutex<HashMap<PathBuf, Weak<()>>>> = OnceLock::new();
+static NATIVE_CACHE: OnceLock<Mutex<HashMap<String, Value>>> = OnceLock::new();
+fn prune_windows(cache: &Path) -> Result<()> {
+    let mut files = fs::read_dir(cache)?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let p = e.path();
+            if p.extension()?.to_str()? != "raw" {
+                return None;
+            }
+            let m = e.metadata().ok()?;
+            Some((p, m.len(), m.modified().ok()))
+        })
+        .collect::<Vec<_>>();
+    let mut total: u64 = files.iter().map(|(_, n, _)| n).sum();
+    files.sort_by_key(|(_, _, time)| *time);
+    let leases = WINDOW_LEASES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
+    for (path, len, _) in files {
+        if total <= 512 * 1024 * 1024 {
+            break;
+        }
+        if leases.get(&path).and_then(Weak::upgrade).is_some() {
+            continue;
+        }
+        if fs::remove_file(&path).is_ok() {
+            let _ = fs::remove_file(path.with_extension("pts"));
+            let _ = fs::remove_file(path.with_extension("ready"));
+            total = total.saturating_sub(len);
+        }
+    }
+    Ok(())
+}
 type Frame = Vec<[f64; 4]>; // linear-sRGB, premultiplied alpha
 struct Source {
+    _lease: Option<Arc<()>>,
+    pcm: Option<Vec<f32>>,
     file: File,
     pts: Vec<Time>,
     w: usize,
@@ -35,12 +74,15 @@ struct Engine<'a> {
     progress: &'a crate::progress::Progress,
     project: &'a Value,
     preview: bool,
+    scale: Option<f64>,
     text_scales: HashMap<String, f64>,
     dir: &'a Path,
     scratch: &'a Path,
     sources: HashMap<String, Source>,
     // Bounded per-render cache; keys fix file bytes, interpretation and dimensions.
     image_cache: VecDeque<(String, Vec<u8>)>,
+    interactive: bool,
+    native: HashMap<String, Value>,
 }
 /// Preview bounds are applied before per-pixel processing, not just at encoding.
 pub(crate) fn dimensions(w: usize, h: usize, preview: bool) -> (usize, usize) {
@@ -50,6 +92,15 @@ pub(crate) fn dimensions(w: usize, h: usize, preview: bool) -> (usize, usize) {
     let scale = (640. / w.max(h) as f64).min(1.);
     let even = |n: usize| (((n as f64 * scale).floor() as usize / 2) * 2).max(2);
     (even(w), even(h))
+}
+fn scaled_dimensions(w: usize, h: usize, preview: bool, scale: Option<f64>) -> (usize, usize) {
+    match scale {
+        Some(scale) => {
+            let even = |n: usize| ((n as f64 * scale).floor() as usize / 2 * 2).max(2);
+            (even(w), even(h))
+        }
+        None => dimensions(w, h, preview),
+    }
 }
 fn canvas(format: &Value, preview: bool) -> (usize, usize) {
     dimensions(
@@ -128,20 +179,32 @@ fn bytes(frame: &Frame) -> Vec<u8> {
     out
 }
 fn linear(raw: &[u8], space: Space) -> Frame {
+    static TABLES: OnceLock<[Vec<f64>; 3]> = OnceLock::new();
+    let tables = TABLES.get_or_init(|| {
+        [Space::Linear, Space::Srgb, Space::Rec709]
+            .map(|s| (0..=65535).map(|n| s.decode(n as f64 / 65535.)).collect())
+    });
+    let table = &tables[match space {
+        Space::Linear => 0,
+        Space::Srgb => 1,
+        Space::Rec709 => 2,
+    }];
     raw.chunks_exact(8)
         .map(|b| {
-            let c: [f64; 4] = std::array::from_fn(|i| {
-                u16::from_le_bytes([b[2 * i], b[2 * i + 1]]) as f64 / 65535.
-            });
+            let a = u16::from_le_bytes([b[6], b[7]]) as f64 / 65535.;
+            if a == 0. {
+                return [0.; 4];
+            }
             [
-                space.decode(c[0]) * c[3],
-                space.decode(c[1]) * c[3],
-                space.decode(c[2]) * c[3],
-                c[3],
+                table[u16::from_le_bytes([b[0], b[1]]) as usize] * a,
+                table[u16::from_le_bytes([b[2], b[3]]) as usize] * a,
+                table[u16::from_le_bytes([b[4], b[5]]) as usize] * a,
+                a,
             ]
         })
         .collect()
 }
+
 fn active(t: &Time, start: &Time, end: &Time, left: bool) -> bool {
     if left {
         t > start && t <= end
@@ -150,6 +213,420 @@ fn active(t: &Time, start: &Time, end: &Time, left: bool) -> bool {
     }
 }
 impl Engine<'_> {
+    fn dimensions(&self, w: usize, h: usize) -> (usize, usize) {
+        scaled_dimensions(w, h, self.preview, self.scale)
+    }
+    fn canvas(&self, format: &Value) -> (usize, usize) {
+        self.dimensions(
+            format["width"].as_u64().unwrap() as usize,
+            format["height"].as_u64().unwrap() as usize,
+        )
+    }
+
+    /// Interactive decoding retains source timestamps and only materializes a
+    /// small window. The full renderer deliberately keeps its existing path.
+    fn window_source(
+        &mut self,
+        item: &Value,
+        audio: bool,
+        rate: i64,
+        channels: usize,
+        at: &Time,
+    ) -> Result<String> {
+        self.progress.check_cancelled()?;
+        let key = format!(
+            "window:{}:{}:{audio}:{rate}:{channels}",
+            text(&item["assetId"]),
+            text(&item["streamId"])
+        );
+        if let Some(s) = self.sources.get(&key) {
+            let upper = if audio {
+                s.start
+                    .add(&Time::new(s.samples.saturating_sub(2) as i64, s.rate)?)
+            } else {
+                s.pts.last().cloned().unwrap_or_else(Time::zero)
+            };
+            if at >= &s.start && (at < &upper || (upper >= s.end && at <= &s.end)) {
+                return Ok(key);
+            }
+        }
+        let asset = &self.project["assets"][text(&item["assetId"])];
+        let stream = array(&asset["streams"])
+            .iter()
+            .find(|s| s["id"] == item["streamId"])
+            .context("missing stream")?;
+        let path = media::local_path(self.dir, text(&asset["uri"]))?;
+        let aid = text(&item["assetId"]).to_owned();
+        let source_stat = fs::metadata(&path)?;
+        let source_stamp = format!("{}:{:?}", source_stat.len(), source_stat.modified().ok());
+        let native_key = format!(
+            "{}:{}:{source_stamp}",
+            path.display(),
+            text(&asset["fingerprint"]["value"])
+        );
+        if let Some(value) = NATIVE_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .unwrap()
+            .get(&native_key)
+            .cloned()
+        {
+            self.native.insert(aid.clone(), value);
+        }
+        if !self.native.contains_key(&aid) {
+            self.progress.start("probe", None, "assets");
+            let result = self.progress.output(
+                Command::new("ffprobe")
+                    .args([
+                        "-v",
+                        "error",
+                        "-show_streams",
+                        "-show_format",
+                        "-of",
+                        "json",
+                    ])
+                    .arg(&path),
+            )?;
+            ensure!(
+                result.status.success(),
+                "FFPROBE_FAILED: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            self.native
+                .insert(aid.clone(), serde_json::from_slice(&result.stdout)?);
+        }
+        let mut native_cache = NATIVE_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .unwrap();
+        if native_cache.len() > 256 {
+            native_cache.clear();
+        }
+        native_cache.insert(native_key, self.native[&aid].clone());
+        drop(native_cache);
+        let native = &self.native[&aid];
+        let ns = array(&native["streams"])
+            .iter()
+            .find(|s| s["index"] == stream["index"])
+            .context("missing native stream")?;
+        let origin = array(&native["streams"])
+            .iter()
+            .map(stream_start)
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .min()
+            .unwrap_or_else(Time::zero);
+        let native_start = stream_start(ns)?;
+        let base: Time = text(&ns["time_base"]).parse()?;
+        let duration = if let Some(ticks) = ns["duration_ts"].as_i64() {
+            Time::integer(ticks).mul(&base)
+        } else {
+            Time::from_json(&stream["duration"])?
+        };
+        let end = native_start.add(&duration).sub(&origin);
+        let bucket = Time::integer(
+            at.mul(&Time::integer(2))
+                .0
+                .floor()
+                .to_integer()
+                .to_i64()
+                .context("window time overflow")?,
+        )
+        .div(&Time::integer(2))?;
+        let native_at = bucket.add(&origin);
+        let seek = native_at
+            .sub(&Time::integer(if audio { 5 } else { 1 }))
+            .max(native_start.clone());
+        let until = native_at
+            .add(&Time::integer(2))
+            .min(native_start.add(&duration));
+        let index = self
+            .sources
+            .keys()
+            .filter(|k| k.starts_with("window:"))
+            .count();
+        let _build = WINDOW_BUILD.lock().unwrap();
+        let cache = self.dir.join("cache").join("decode-windows-v1");
+        fs::create_dir_all(&cache)?;
+        let cache_key = crate::store::hash(
+            &json!({"path":path,"fingerprint":asset["fingerprint"],"sourceStamp":source_stamp,"stream":stream,"at":bucket.json()?,"audio":audio,"rate":rate,"channels":channels,"scale":if audio {None} else {self.scale},"decoder":"window-v3","renderer":env!("CARGO_PKG_VERSION")}),
+        )?;
+        let cached_raw = cache.join(format!("{cache_key}.raw"));
+        let cached_meta = cache.join(format!("{cache_key}.pts"));
+        let ready = cache.join(format!("{cache_key}.ready"));
+        // Decode into a private staging directory, publish the marker last.
+        let staging = tempfile::tempdir_in(&cache)?;
+        // Stable names allow old windows to be replaced instead of filling disk.
+        // Stream IDs are domain identifiers, not safe FFmpeg muxer paths.
+        let stem = "window";
+        let raw_path = staging.path().join(format!("{stem}.raw"));
+        let meta_path = staging.path().join(format!("{stem}.pts"));
+        self.sources.remove(&key);
+        let mut cmd = Command::new("ffmpeg");
+        cmd.current_dir(staging.path())
+            .args([
+                "-nostdin",
+                "-v",
+                "error",
+                "-y",
+                "-copyts",
+                "-seek_timestamp",
+                "1",
+                "-ss",
+                &format!("{}us", seek.mul(&Time::integer(1_000_000)).ceil_i64()?),
+                "-noaccurate_seek",
+                "-threads",
+                "2",
+                "-noautorotate",
+                "-i",
+            ])
+            .arg(&path)
+            .args([
+                "-map",
+                &format!("0:{}", stream["index"]),
+                "-threads",
+                "2",
+                "-to",
+                &format!("{}us", until.mul(&Time::integer(1_000_000)).ceil_i64()?),
+            ]);
+        let (mut w, mut h, mut sar, mut space) = (1, 1, 1., Space::Rec709);
+        let mut audio_origin = None;
+        if audio {
+            let native_rate = text(&ns["sample_rate"]).parse::<i64>()?;
+            let (mut a, mut b) = (native_rate, rate);
+            while b != 0 {
+                let rem = a % b;
+                a = b;
+                b = rem;
+            }
+            let period = native_rate / a;
+            let aligned = seek
+                .sub(&native_start)
+                .mul(&Time::integer(native_rate))
+                .div(&Time::integer(period))?
+                .ceil_i64()?
+                * period;
+            let aligned_time = native_start.add(&Time::new(aligned, native_rate)?);
+            let input_pts = aligned_time.mul(&Time::integer(native_rate));
+            ensure!(input_pts.0.is_integer(), "AUDIO_WINDOW_CLOCK_UNSUPPORTED");
+            let filter = format!(
+                "atrim=start_pts={},asetpts=PTS-STARTPTS,aresample={rate}",
+                input_pts.ceil_i64()?
+            );
+            audio_origin = Some(aligned_time.sub(&origin));
+            cmd.args([
+                "-vn",
+                "-ar",
+                &rate.to_string(),
+                "-ac",
+                &channels.to_string(),
+                "-c:a",
+                "pcm_f32le",
+                "-af",
+                &filter,
+                "-t",
+                &format!(
+                    "{}us",
+                    until
+                        .sub(&aligned_time)
+                        .mul(&Time::integer(1_000_000))
+                        .ceil_i64()?
+                ),
+            ]);
+        } else {
+            ensure!(
+                stream["video"]["alphaMode"] != "premultiplied",
+                "premultiplied source media unsupported"
+            );
+            let ow = stream["video"]["width"].as_u64().context("source width")? as usize;
+            let oh = stream["video"]["height"]
+                .as_u64()
+                .context("source height")? as usize;
+            ensure!(
+                ns["width"].as_u64() == Some(ow as u64) && ns["height"].as_u64() == Some(oh as u64),
+                "MEDIA_DIMENSION_MISMATCH"
+            );
+            (w, h) = self.dimensions(ow, oh);
+            sar = anim::float(&Time::from_json(&stream["video"]["pixelAspect"])?)?
+                * (ow as f64 / oh as f64)
+                / (w as f64 / h as f64);
+            space = Space::parse(text(&stream["video"]["colorSpace"]))?;
+            let rgb = ["rgb", "bgr", "gbr"]
+                .iter()
+                .any(|p| text(&ns["pix_fmt"]).starts_with(p));
+            let filter = if rgb {
+                format!(
+                    "trim=start={}:end={},scale={w}:{h}:flags=fast_bilinear,format=rgba64le",
+                    anim::float(&seek)?,
+                    anim::float(&until)?
+                )
+            } else {
+                format!("trim=start={}:end={},scale={w}:{h}:flags=fast_bilinear:in_color_matrix=bt709:out_range=full,format=rgba64le",anim::float(&seek)?,anim::float(&until)?)
+            };
+            cmd.args([
+                "-an",
+                "-vf",
+                &filter,
+                "-fps_mode",
+                "passthrough",
+                "-enc_time_base",
+                &base.expression(),
+                "-frames:v",
+                &(256 * 1024 * 1024 / frame_size(w, h)?).max(2).to_string(),
+                "-c:v",
+                "rawvideo",
+                "-pix_fmt",
+                "rgba64le",
+            ]);
+        }
+        cmd.args([
+            "-f",
+            "tee",
+            &format!(
+                "[f={}]{}.raw|[f=framehash:hash=adler32]{}.pts",
+                if audio { "f32le" } else { "rawvideo" },
+                stem,
+                stem
+            ),
+        ]);
+        self.progress.start(
+            if audio {
+                "decode_audio"
+            } else {
+                "decode_video"
+            },
+            None,
+            "windows",
+        );
+        if !ready.is_file() || !cached_raw.is_file() || !cached_meta.is_file() {
+            let result = self.progress.output(&mut cmd)?;
+            ensure!(
+                result.status.success(),
+                "MEDIA_PROCESS_FAILED: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            self.progress.check_cancelled()?;
+            fs::rename(&raw_path, &cached_raw)?;
+            fs::rename(&meta_path, &cached_meta)?;
+            fs::write(&ready, b"ready")?;
+        }
+        let metadata = fs::read_to_string(&cached_meta)?;
+        let mut pts = Vec::new();
+        let mut tb = None;
+        let mut expected_bytes = 0usize;
+        for line in metadata.lines() {
+            if let Some(value) = line.strip_prefix("#tb 0: ") {
+                tb = Some(value.trim().parse::<Time>()?);
+            }
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+            let fields: Vec<_> = line.split(',').map(str::trim).collect();
+            ensure!(
+                fields.len() >= 6,
+                "SOURCE_INDEX_INVALID: malformed window metadata"
+            );
+            let packet_time = Time::integer(fields[2].parse()?)
+                .mul(tb.as_ref().context("source time base missing")?);
+            pts.push(if let Some(start) = &audio_origin {
+                start.add(&packet_time)
+            } else {
+                packet_time.sub(&origin)
+            });
+            expected_bytes = expected_bytes
+                .checked_add(fields[4].parse::<usize>()?)
+                .context("window size overflow")?;
+        }
+        let file = File::open(&cached_raw)?;
+        let len = file.metadata()?.len() as usize;
+        ensure!(
+            !pts.is_empty() && len == expected_bytes,
+            "SOURCE_INDEX_INVALID: empty or incomplete window"
+        );
+        ensure!(
+            pts.windows(2).all(|p| p[0] < p[1]),
+            "SOURCE_INDEX_INVALID: nonincreasing timestamps"
+        );
+        let start = pts[0].clone();
+        let samples = if audio {
+            len / (channels * 4)
+        } else {
+            ensure!(
+                len == pts.len() * frame_size(w, h)?,
+                "SOURCE_INDEX_INVALID: frame sizes"
+            );
+            0
+        };
+        if !audio {
+            let full_tail = until >= native_start.add(&duration) && len < 256 * 1024 * 1024;
+            ensure!(
+                at >= &start && (at <= pts.last().unwrap() || full_tail),
+                "PREVIEW_DECODE_WINDOW_LIMIT: source requires a smaller decode window"
+            );
+        }
+        let pcm = if audio {
+            Some(
+                fs::read(&cached_raw)?
+                    .chunks_exact(4)
+                    .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+                    .collect(),
+            )
+        } else {
+            None
+        };
+        // A session may visit thousands of clips. Retain only a bounded set of
+        // source windows; the shared disk cache can reopen evicted windows.
+        loop {
+            let windows = self
+                .sources
+                .iter()
+                .filter(|(key, _)| key.starts_with("window:"))
+                .collect::<Vec<_>>();
+            let held: u64 = windows
+                .iter()
+                .map(|(_, s)| s.file.metadata().map_or(0, |m| m.len()))
+                .sum();
+            if windows.len() < 4 && held + len as u64 <= 256 * 1024 * 1024 {
+                break;
+            }
+            let Some(expired) = windows.first().map(|(key, _)| (*key).clone()) else {
+                break;
+            };
+            self.sources.remove(&expired);
+        }
+        let mut leases = WINDOW_LEASES
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .unwrap();
+        let lease = leases
+            .get(&cached_raw)
+            .and_then(Weak::upgrade)
+            .unwrap_or_else(|| Arc::new(()));
+        leases.retain(|_, lease| lease.strong_count() > 0);
+        leases.insert(cached_raw.clone(), Arc::downgrade(&lease));
+        drop(leases);
+        prune_windows(&cache)?;
+        self.sources.insert(
+            key.clone(),
+            Source {
+                _lease: Some(lease),
+                pcm,
+                file,
+                pts,
+                w,
+                h,
+                sar,
+                space,
+                samples,
+                rate,
+                channels,
+                start,
+                end,
+            },
+        );
+        self.progress.advance((index + 1) as u64);
+        Ok(key)
+    }
     fn source(&mut self, item: &Value, audio: bool, rate: i64, channels: usize) -> Result<String> {
         let key = format!(
             "{}:{}:{audio}:{rate}:{channels}",
@@ -225,7 +702,7 @@ impl Engine<'_> {
             );
             sar = anim::float(&Time::from_json(&stream["video"]["pixelAspect"])?)?;
             space = Space::parse(text(&stream["video"]["colorSpace"]))?;
-            let (dw, dh) = dimensions(w, h, self.preview);
+            let (dw, dh) = self.dimensions(w, h);
             sar *= (w as f64 / h as f64) / (dw as f64 / dh as f64);
             w = dw;
             h = dh;
@@ -342,6 +819,8 @@ impl Engine<'_> {
         self.sources.insert(
             key.clone(),
             Source {
+                _lease: None,
+                pcm: None,
                 file,
                 pts,
                 w,
@@ -376,7 +855,7 @@ impl Engine<'_> {
             let v = &asset["streams"][0]["video"];
             let ow = v["width"].as_u64().unwrap() as usize;
             let oh = v["height"].as_u64().unwrap() as usize;
-            let (w, h) = dimensions(ow, oh, self.preview);
+            let (w, h) = self.dimensions(ow, oh);
             let sar = anim::float(&Time::from_json(&v["pixelAspect"])?)? * (ow as f64 / oh as f64)
                 / (w as f64 / h as f64);
             let space = Space::parse(text(&v["colorSpace"]))?;
@@ -435,7 +914,20 @@ impl Engine<'_> {
                 Space::Rec709,
             ));
         }
-        let key = self.source(item, false, 0, 0)?;
+        let source_time = if item["sourceRange"].is_null() {
+            Time::zero()
+        } else {
+            anim::mapping(item, t, left)?.0
+        };
+        let stream = array(&asset["streams"])
+            .iter()
+            .find(|s| s["id"] == item["streamId"])
+            .context("missing stream")?;
+        let key = if self.interactive && stream["kind"] == "video" {
+            self.window_source(item, false, 0, 0, &source_time)?
+        } else {
+            self.source(item, false, 0, 0)?
+        };
         let s = self.sources.get_mut(&key).unwrap();
         if item["sourceRange"].is_null() {
             return Ok((Self::raw_frame(s, 0)?, s.w, s.h, s.sar, s.space));
@@ -520,6 +1012,24 @@ impl Engine<'_> {
             .get(text(&item["id"]))
             .copied()
             .unwrap_or(1.);
+        let text_cache = if self.interactive {
+            let directory = self.dir.join("cache").join("interactive-text-v1");
+            fs::create_dir_all(&directory)?;
+            let font = style["fontAssetId"]
+                .as_str()
+                .map(|id| &self.project["assets"][id]);
+            let hash = crate::store::hash(
+                &json!({"style":style,"content":content,"font":font,"width":w,"height":h,"scale":scale,"version":env!("CARGO_PKG_VERSION")}),
+            )?;
+            Some(directory.join(format!("{hash}.rgba")))
+        } else {
+            None
+        };
+        if let Some(path) = text_cache.as_ref().filter(|path| path.is_file()) {
+            let raw = fs::read(path)?;
+            ensure!(raw.len() == frame_size(w, h)?, "TEXT_CACHE_INVALID");
+            return Ok(raw);
+        }
         let margin = 20. * scale;
         let x = match text(&style["align"]) {
             "left" => margin.to_string(),
@@ -564,6 +1074,8 @@ impl Engine<'_> {
             ])
             .arg(&out))?;
         let mut s = Source {
+            _lease: None,
+            pcm: None,
             file: File::open(out)?,
             pts: vec![Time::zero()],
             w,
@@ -577,6 +1089,12 @@ impl Engine<'_> {
             end: Time::zero(),
         };
         let raw = Self::raw_frame(&mut s, 0)?;
+        if let Some(path) = text_cache {
+            let mut staged = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
+            staged.write_all(&raw)?;
+            staged.persist(&path).map_err(|e| e.error)?;
+            crate::preview::prune_artifacts(path.parent().unwrap(), &path)?;
+        }
         self.sources.insert(key, s);
         Ok(raw)
     }
@@ -598,7 +1116,7 @@ impl Engine<'_> {
             "sequence" => {
                 let (src, upper, _) = anim::mapping(item, t, left)?;
                 let child = &self.project["sequences"][text(&item["sequenceId"])];
-                let (cw, ch) = canvas(&child["format"], self.preview);
+                let (cw, ch) = self.canvas(&child["format"]);
                 let original_aspect = child["format"]["width"].as_f64().unwrap()
                     / child["format"]["height"].as_f64().unwrap();
                 let sar = original_aspect / (cw as f64 / ch as f64);
@@ -638,14 +1156,61 @@ impl Engine<'_> {
             other => bail!("unsupported video item {other}"),
         };
         let geometry = visual::Geometry::new(sw, sh, sar, w, h, &evaluated["video"]["transform"])?;
-        let pipeline = visual::Pipeline::new(&evaluated, self.project, self.dir, space)?;
-        let mut out = vec![0; frame_size(w, h)?];
-        geometry.frame(&raw, Some(&pipeline), &mut out);
-        let mut f = linear(&out, Space::Rec709);
+        let mut pipeline = visual::Pipeline::new(&evaluated, self.project, self.dir, space)?;
+        if self.preview && pipeline.spatial() {
+            let (ow, oh) = match text(&item["type"]) {
+                "media" => {
+                    let stream = array(&self.project["assets"][text(&item["assetId"])]["streams"])
+                        .iter()
+                        .find(|s| s["id"] == item["streamId"])
+                        .context("missing effect stream")?;
+                    (
+                        stream["video"]["width"].as_f64().context("video width")?,
+                        stream["video"]["height"].as_f64().context("video height")?,
+                    )
+                }
+                "sequence" => {
+                    let format = &self.project["sequences"][text(&item["sequenceId"])]["format"];
+                    (
+                        format["width"].as_f64().unwrap(),
+                        format["height"].as_f64().unwrap(),
+                    )
+                }
+                _ => {
+                    let format = self.project["sequences"]
+                        .as_object()
+                        .unwrap()
+                        .values()
+                        .find(|s| {
+                            array(&s["tracks"])
+                                .iter()
+                                .any(|tr| array(&tr["items"]).iter().any(|i| i["id"] == item["id"]))
+                        })
+                        .map(|s| &s["format"])
+                        .context("effect owner sequence")?;
+                    (
+                        format["width"].as_f64().unwrap(),
+                        format["height"].as_f64().unwrap(),
+                    )
+                }
+            };
+            pipeline = pipeline.source_scale(sw as f64 / ow, sh as f64 / oh);
+        }
+        // Identity geometry and a Rec.709 input need neither resampling nor
+        // a decode/encode/quantize round trip before linear compositing.
+        let mut f = if geometry.identity() && pipeline.passthrough() {
+            linear(&raw, Space::Rec709)
+        } else {
+            let mut out = vec![0; frame_size(w, h)?];
+            geometry.frame(&raw, Some(&pipeline), &mut out);
+            linear(&out, Space::Rec709)
+        };
         let opacity = evaluated["video"]["opacity"].as_f64().unwrap_or(1.);
-        for c in &mut f {
-            for v in c {
-                *v *= opacity;
+        if opacity != 1. {
+            for c in &mut f {
+                for v in c {
+                    *v *= opacity;
+                }
             }
         }
         Ok(f)
@@ -653,7 +1218,7 @@ impl Engine<'_> {
     fn sequence_frame(&mut self, sid: &str, t: &Time, left: bool, depth: usize) -> Result<Frame> {
         ensure!(depth < 64, "sequence depth exceeds 64");
         let seq = &self.project["sequences"][sid];
-        let (w, h) = canvas(&seq["format"], self.preview);
+        let (w, h) = self.canvas(&seq["format"]);
         let mut background = rgba(&seq["background"], [0., 0., 0., 1.]);
         if background[3] > 0. {
             for i in 0..3 {
@@ -771,6 +1336,134 @@ impl Engine<'_> {
         }
         Ok(frame)
     }
+    /// Compile ordinary forward, unity-rate clips once per block. Exact rational
+    /// anchors determine sample indices and fractional phase; the inner loop
+    /// only interpolates PCM and mixes gains. Other mappings use the evaluator.
+    fn audio_block(
+        &mut self,
+        sid: &str,
+        start: &Time,
+        count: usize,
+        rate: i64,
+        channels: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        let seq = &self.project["sequences"][sid];
+        let end = project::sequence_duration(seq)?;
+        let solo = array(&seq["tracks"])
+            .iter()
+            .any(|tr| tr["kind"] == "audio" && enabled(tr) && tr["solo"] == true);
+        let mut clips = Vec::new();
+        for track in array(&seq["tracks"]).iter().filter(|tr| {
+            tr["kind"] == "audio"
+                && enabled(tr)
+                && tr["muted"] != true
+                && (!solo || tr["solo"] == true)
+        }) {
+            for item in array(&track["items"]) {
+                if !enabled(item)
+                    || item["audio"]["muted"] == true
+                    || item["playback"]["audioPolicy"]["mode"] == "mute"
+                {
+                    continue;
+                }
+                let (a, b) = bounds(&item["timelineRange"])?;
+                let first = a
+                    .sub(start)
+                    .mul(&Time::integer(rate))
+                    .ceil_i64()?
+                    .clamp(0, count as i64) as usize;
+                let last = b
+                    .min(end.clone())
+                    .sub(start)
+                    .mul(&Time::integer(rate))
+                    .ceil_i64()?
+                    .clamp(0, count as i64) as usize;
+                if first >= last {
+                    continue;
+                }
+                if item["type"] == "generator" && item["generatorType"] == "builtin.silence" {
+                    continue;
+                }
+                if item["type"] != "media"
+                    || item["playback"]["reverse"] == true
+                    || matches!(text(&item["playback"]["mode"]), "remap" | "loop" | "hold")
+                    || Time::from_json(&item["sourceRange"]["duration"])?
+                        != Time::from_json(&item["timelineRange"]["duration"])?
+                    || ["gainDb", "pan"]
+                        .iter()
+                        .any(|k| !item["audio"][k].is_null() && !item["audio"][k].is_number())
+                    || ["fadeIn", "fadeOut"]
+                        .iter()
+                        .any(|k| item["audio"][k].is_object() && item["audio"][k]["num"] != 0)
+                {
+                    return Ok(None);
+                }
+                clips.push((item, a, first, last));
+            }
+        }
+        let mut mixed = vec![0f64; count * channels];
+        for (item, clip_start, mut offset, last) in clips {
+            let gain = 10f64.powf(item["audio"]["gainDb"].as_f64().unwrap_or(0.) / 20.);
+            let pan = item["audio"]["pan"].as_f64().unwrap_or(0.);
+            let (source_start, source_end) = bounds(&item["sourceRange"])?;
+            while offset < last {
+                self.progress.check_cancelled()?;
+                let src = source_start
+                    .add(&start.sub(&clip_start))
+                    .add(&Time::new(offset as i64, rate)?);
+                let key = self.window_source(item, true, rate, channels, &src)?;
+                let source = &self.sources[&key];
+                let index = src.sub(&source.start).mul(&Time::integer(rate));
+                let n = index
+                    .0
+                    .floor()
+                    .to_integer()
+                    .to_i64()
+                    .context("audio index overflow")?;
+                let frac = anim::float(&index.sub(&Time::integer(n)))?;
+                ensure!(
+                    n >= 0 && (n as usize) < source.samples,
+                    "audio source sample outside decoded data"
+                );
+                let final_sample = source_end
+                    .sub(&source.start)
+                    .mul(&Time::integer(rate))
+                    .ceil_i64()?
+                    .saturating_sub(1);
+                ensure!(final_sample >= n, "audio sample exceeds source window");
+                // Keep one interpolation neighbor; at the true source end clamp.
+                let available = source.samples.saturating_sub(n as usize + 1).max(1);
+                let take = (last - offset)
+                    .min(available)
+                    .min((final_sample - n + 1) as usize);
+                let pcm = source.pcm.as_ref().context("interactive PCM missing")?;
+                for j in 0..take {
+                    let a = n as usize + j;
+                    let b = (a + 1).min(final_sample as usize).min(source.samples - 1);
+                    for c in 0..channels {
+                        let x = pcm[a * channels + c] as f64;
+                        let y = pcm[b * channels + c] as f64;
+                        let amplitude = gain
+                            * if channels != 2 {
+                                1.
+                            } else if c == 0 {
+                                (1. - pan).min(1.)
+                            } else {
+                                (1. + pan).min(1.)
+                            };
+                        mixed[(offset + j) * channels + c] += (x + (y - x) * frac) * amplitude;
+                    }
+                }
+                offset += take;
+            }
+        }
+        Ok(Some(
+            mixed
+                .into_iter()
+                .flat_map(|v| (v as f32).to_le_bytes())
+                .collect(),
+        ))
+    }
     fn audio_sample(
         &mut self,
         sid: &str,
@@ -826,7 +1519,11 @@ impl Engine<'_> {
                         depth + 1,
                     )?
                 } else {
-                    let key = self.source(item, true, rate, channels)?;
+                    let key = if self.interactive {
+                        self.window_source(item, true, rate, channels, &src)?
+                    } else {
+                        self.source(item, true, rate, channels)?
+                    };
                     let s = self.sources.get_mut(&key).unwrap();
                     let index = src.sub(&s.start).mul(&Time::integer(s.rate));
                     let mut n = index
@@ -846,6 +1543,12 @@ impl Engine<'_> {
                         "audio source sample outside decoded data"
                     );
                     let read = |s: &mut Source, n: usize| -> Result<Vec<f64>> {
+                        if let Some(pcm) = &s.pcm {
+                            return Ok(pcm[n * s.channels..(n + 1) * s.channels]
+                                .iter()
+                                .map(|s| *s as f64)
+                                .collect());
+                        }
                         s.file.seek(SeekFrom::Start((n * s.channels * 4) as u64))?;
                         let mut buf = vec![0; s.channels * 4];
                         s.file.read_exact(&mut buf)?;
@@ -1002,6 +1705,148 @@ pub(crate) fn preview(
 ) -> Result<Value> {
     render_profile(project, dir, sid, output, true, true, progress)
 }
+
+/// The interactive facade shares the reference evaluator and color pipeline.
+pub(crate) struct PreviewEngine<'a> {
+    engine: Engine<'a>,
+    sid: &'a str,
+    pub width: usize,
+    pub height: usize,
+    pub fps: Time,
+    pub rate: i64,
+    pub channels: usize,
+    pub duration: Time,
+}
+impl<'a> PreviewEngine<'a> {
+    #[cfg(test)]
+    pub(crate) fn new(
+        project: &'a Value,
+        dir: &'a Path,
+        sid: &'a str,
+        scratch: &'a Path,
+        progress: &'a crate::progress::Progress,
+    ) -> Result<Self> {
+        Self::with_scale(project, dir, sid, scratch, progress, None)
+    }
+    pub(crate) fn with_scale(
+        project: &'a Value,
+        dir: &'a Path,
+        sid: &'a str,
+        scratch: &'a Path,
+        progress: &'a crate::progress::Progress,
+        scale: Option<f64>,
+    ) -> Result<Self> {
+        crate::preview::validate_scale(scale)?;
+        project::validate(project)?;
+        preflight(project)?;
+        let seq = project["sequences"]
+            .get(sid)
+            .context("sequence not found")?;
+        let format = &seq["format"];
+        let (width, height) = scaled_dimensions(
+            format["width"].as_u64().unwrap() as usize,
+            format["height"].as_u64().unwrap() as usize,
+            true,
+            scale,
+        );
+        ensure!(width <= 4096 && height <= 4096 && width * height <= 4096 * 2304 && width.div_ceil(16) * height.div_ceil(16) <= 36864, "PREVIEW_RESOLUTION_TOO_LARGE: reduce scale (maximum 4096 on either axis and 9437184 pixels)");
+        let mut text_scales = HashMap::new();
+        for seq in project["sequences"].as_object().unwrap().values() {
+            let (w, h) = scaled_dimensions(
+                seq["format"]["width"].as_u64().unwrap() as usize,
+                seq["format"]["height"].as_u64().unwrap() as usize,
+                true,
+                scale,
+            );
+            let scale = (w as f64 / seq["format"]["width"].as_f64().unwrap())
+                .min(h as f64 / seq["format"]["height"].as_f64().unwrap());
+            for track in array(&seq["tracks"]) {
+                for item in array(&track["items"]) {
+                    text_scales.insert(text(&item["id"]).to_owned(), scale);
+                }
+            }
+        }
+        Ok(Self {
+            engine: Engine {
+                project,
+                dir,
+                scratch,
+                progress,
+                preview: true,
+                scale,
+                text_scales,
+                sources: HashMap::new(),
+                image_cache: VecDeque::new(),
+                interactive: true,
+                native: HashMap::new(),
+            },
+            sid,
+            width,
+            height,
+            fps: Time::from_json(&format["frameRate"])?.min(Time::integer(24)),
+            rate: format["audioSampleRate"]
+                .as_i64()
+                .context("audio sample rate")?
+                .min(24000),
+            channels: if format["audioChannelLayout"] == "mono" {
+                1
+            } else {
+                2
+            },
+            duration: project::sequence_duration(seq)?,
+        })
+    }
+    pub(crate) fn video(&mut self, at: &Time, srgb: bool) -> Result<Vec<u8>> {
+        self.engine.progress.check_cancelled()?;
+        let frame = self.engine.sequence_frame(self.sid, at, false, 0)?;
+        if !srgb {
+            return Ok(bytes(&frame));
+        }
+        let mut out = Vec::with_capacity(frame.len() * 8);
+        for c in frame {
+            for i in 0..4 {
+                let value = if i == 3 {
+                    c[3]
+                } else if c[3] > 0. {
+                    Space::Srgb.encode(c[i] / c[3])
+                } else {
+                    0.
+                };
+                out.extend_from_slice(
+                    &((value.clamp(0., 1.) * 65535.).round() as u16).to_le_bytes(),
+                );
+            }
+        }
+        Ok(out)
+    }
+    pub(crate) fn audio_at(&mut self, start: &Time, count: usize) -> Result<Vec<u8>> {
+        if self.engine.interactive {
+            if let Some(out) =
+                self.engine
+                    .audio_block(self.sid, start, count, self.rate, self.channels)?
+            {
+                return Ok(out);
+            }
+        }
+        let mut out = Vec::with_capacity(count * self.channels * 4);
+        for n in 0..count as i64 {
+            if n % 2048 == 0 {
+                self.engine.progress.check_cancelled()?;
+            }
+            for value in self.engine.audio_sample(
+                self.sid,
+                &start.add(&Time::new(n, self.rate)?),
+                false,
+                self.rate,
+                self.channels,
+                0,
+            )? {
+                out.extend_from_slice(&(value as f32).to_le_bytes());
+            }
+        }
+        Ok(out)
+    }
+}
 fn render_profile(
     project: &Value,
     dir: &Path,
@@ -1090,16 +1935,20 @@ fn render_profile(
         progress,
         project,
         preview,
+        scale: None,
         text_scales,
         dir,
         scratch: scratch.path(),
         sources: HashMap::new(),
         image_cache: VecDeque::new(),
+        interactive: false,
+        native: HashMap::new(),
     };
     let video = scratch.path().join("video.rgba");
     let mut writer = BufWriter::new(File::create(&video)?);
     progress.start("video", Some(frames as u64), "frames");
     for n in 0..frames {
+        progress.check_cancelled()?;
         let t = Time::integer(n).div(&fps)?;
         let frame = engine.sequence_frame(sid, &t, false, 0)?;
         writer.write_all(&bytes(&frame))?;
@@ -1117,6 +1966,9 @@ fn render_profile(
     });
     progress.start("audio", Some(samples as u64), "samples");
     for n in 0..samples {
+        if n % 2048 == 0 {
+            progress.check_cancelled()?;
+        }
         let sample = if has_audio {
             engine.audio_sample(sid, &Time::new(n, rate)?, false, rate, channels, 0)?
         } else {
@@ -1134,6 +1986,7 @@ fn render_profile(
     let rendered = scratch.path().join("render.mp4");
     progress.ffmpeg(Command::new("ffmpeg").args(["-nostdin","-v","error","-y","-threads","2","-f","rawvideo","-pixel_format","rgba64le","-video_size",&format!("{w}x{h}"),"-framerate",&fps.expression(),"-i"]).arg(video).args(["-f","f32le","-ar",&rate.to_string(),"-ac",&channels.to_string(),"-i"]).arg(audio).args(["-filter_threads","2","-vf","scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=range=limited:colorspace=bt709:color_primaries=bt709:color_trc=bt709","-c:v","libx264","-threads","2","-preset",if preview{"ultrafast"}else{"fast"},"-crf",if preview{"28"}else{"18"},"-c:a","aac","-movflags","+faststart"]).arg(&rendered), "encode", Some(frames as u64))?;
     progress.start("finalize", None, "files");
+    progress.check_cancelled()?;
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
     std::io::copy(&mut File::open(rendered)?, &mut staged)?;
     staged.as_file().sync_all()?;
@@ -1145,4 +1998,244 @@ fn render_profile(
     Ok(
         json!({"ok":true,"output":output,"sequenceId":sid,"revision":project["revision"],"frames":frames,"duration":duration.json()?,"backend":"cutcraft-reference-0.5","width":w,"height":h,"frameRate":fps.json()?,"preview":preview}),
     )
+}
+
+#[cfg(test)]
+mod interactive_tests {
+    use super::*;
+    use crate::{id, progress::Progress};
+    #[test]
+    #[ignore = "manual debug preview profiling; set CUTCRAFT_PROFILE_PROJECT"]
+    fn profile_preview() {
+        let dir = std::path::PathBuf::from(std::env::var("CUTCRAFT_PROFILE_PROJECT").unwrap());
+        let p: Value =
+            serde_json::from_slice(&fs::read(dir.join("cutcraft.json")).unwrap()).unwrap();
+        let scratch = tempfile::tempdir().unwrap();
+        let progress = Progress::default();
+        let scale = std::env::var("CUTCRAFT_PROFILE_SCALE")
+            .ok()
+            .map(|s| s.parse().unwrap());
+        let mut e = PreviewEngine::with_scale(
+            &p,
+            &dir,
+            text(&p["rootSequenceId"]),
+            scratch.path(),
+            &progress,
+            scale,
+        )
+        .unwrap();
+        for pass in 0..2 {
+            let now = std::time::Instant::now();
+            for n in 0..12 {
+                e.video(&Time::new(n, 24).unwrap(), false).unwrap();
+            }
+            eprintln!("pass {pass}: 12 video frames {:?}", now.elapsed());
+            let now = std::time::Instant::now();
+            e.audio_at(&Time::zero(), 12000).unwrap();
+            eprintln!("pass {pass}: 0.5s audio {:?}", now.elapsed());
+        }
+    }
+    fn fixture(dir: &Path, native_rate: i64) -> (Value, String) {
+        let source = dir.join("source.mp4");
+        let result = Command::new("ffmpeg")
+            .args([
+                "-nostdin",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=64x48:rate=12:duration=12",
+                "-f",
+                "lavfi",
+                "-i",
+                &format!("sine=frequency=427:sample_rate={native_rate}:duration=12"),
+                "-vf",
+                "select=not(eq(mod(n\\,3)\\,1))",
+                "-fps_mode",
+                "vfr",
+                "-c:v",
+                "libx264",
+                "-g",
+                "12",
+                "-bf",
+                "2",
+                "-c:a",
+                "aac",
+                "-color_primaries",
+                "bt709",
+                "-color_trc",
+                "bt709",
+                "-colorspace",
+                "bt709",
+            ])
+            .arg(&source)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let mut p = project::new("window");
+        let sid = text(&p["rootSequenceId"]).to_owned();
+        let aid = id("asset");
+        p["assets"][&aid] = media::asset(&source, "source.mp4", false).unwrap();
+        p["assets"][&aid]["streams"][0]["video"]["colorSpace"] = json!("rec709");
+        let sequence = &mut p["sequences"][&sid];
+        sequence["format"]["width"] = json!(64);
+        sequence["format"]["height"] = json!(48);
+        sequence["format"]["frameRate"] = Time::integer(12).json().unwrap();
+        let range = json!({"start":{"num":0,"den":1},"duration":{"num":11,"den":1}});
+        sequence["tracks"] = json!([
+            {"id":id("track"),"kind":"video","name":"Video","overlapPolicy":"forbid","items":[{"id":id("item"),"type":"media","assetId":aid,"streamId":"stream_v0","timelineRange":range,"sourceRange":range}]},
+            {"id":id("track"),"kind":"audio","name":"Audio","overlapPolicy":"forbid","items":[{"id":id("item"),"type":"media","assetId":aid,"streamId":"stream_a1","timelineRange":range,"sourceRange":range}]}
+        ]);
+        (p, sid)
+    }
+    #[test]
+    fn block_audio_matches_sample_evaluator_across_clip_and_window_boundaries() {
+        if Command::new("ffmpeg").arg("-version").output().is_err() {
+            assert!(std::env::var_os("CUTCRAFT_REQUIRE_FFMPEG").is_none());
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let (mut p, sid) = fixture(dir.path(), 44100);
+        let clip = &mut p["sequences"][&sid]["tracks"][1]["items"][0];
+        clip["timelineRange"]["start"] = Time::new(1, 23).unwrap().json().unwrap();
+        clip["sourceRange"]["start"] = Time::new(1, 7).unwrap().json().unwrap();
+        clip["audio"] = json!({"gainDb":-6.,"pan":0.3});
+        let mut track = p["sequences"][&sid]["tracks"][1].clone();
+        track["id"] = json!(id("track"));
+        track["items"][0]["id"] = json!(id("item"));
+        track["items"][0]["audio"] = json!({"gainDb":-3.,"pan":-0.7});
+        p["sequences"][&sid]["tracks"]
+            .as_array_mut()
+            .unwrap()
+            .push(track);
+        let scratch = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let progress = Progress::default();
+        let mut fast = PreviewEngine::new(&p, dir.path(), &sid, scratch.path(), &progress).unwrap();
+        let mut slow = PreviewEngine::new(&p, dir.path(), &sid, other.path(), &progress).unwrap();
+        slow.engine.interactive = false;
+        for (start, count) in [
+            (Time::zero(), 1500),
+            (Time::new(3, 2).unwrap(), 14000),
+            (Time::integer(11), 1500),
+        ] {
+            let a = fast.audio_at(&start, count).unwrap();
+            let b = slow.audio_at(&start, count).unwrap();
+            let difference = a
+                .chunks_exact(4)
+                .zip(b.chunks_exact(4))
+                .map(|(a, b)| {
+                    (f32::from_le_bytes(a.try_into().unwrap())
+                        - f32::from_le_bytes(b.try_into().unwrap()))
+                    .abs()
+                })
+                .fold(0f32, f32::max);
+            assert!(
+                difference < 0.0001,
+                "block differs at {start}: {difference}"
+            );
+        }
+        // Reverse/fades remain on the full evaluator; no silent approximation.
+        drop(fast);
+        for change in [
+            json!({"playback":{"mode":"fit","reverse":true,"audioPolicy":{"mode":"resample","processor":{"id":"cutcraft.linear-resample","version":"1.0.0","parameters":{}}}}}),
+            json!({"audio":{"fadeIn":{"num":1,"den":1}}}),
+        ] {
+            let mut changed = p.clone();
+            for (k, v) in change.as_object().unwrap() {
+                changed["sequences"][&sid]["tracks"][1]["items"][0][k] = v.clone();
+            }
+            let mut e =
+                PreviewEngine::new(&changed, dir.path(), &sid, scratch.path(), &progress).unwrap();
+            assert!(e
+                .engine
+                .audio_block(&sid, &Time::integer(1), 100, e.rate, e.channels)
+                .unwrap()
+                .is_none());
+        }
+    }
+    #[test]
+    fn windows_match_vfr_reference_frames_and_pcm() {
+        if Command::new("ffmpeg").arg("-version").output().is_err() {
+            assert!(std::env::var_os("CUTCRAFT_REQUIRE_FFMPEG").is_none());
+            return;
+        }
+        for native_rate in [44100, 48000] {
+            let dir = tempfile::tempdir().unwrap();
+            let (p, sid) = fixture(dir.path(), native_rate);
+            let original = tempfile::tempdir().unwrap();
+            let window = tempfile::tempdir().unwrap();
+            let progress = Progress::default();
+            let mut reference =
+                PreviewEngine::new(&p, dir.path(), &sid, original.path(), &progress).unwrap();
+            reference.engine.interactive = false;
+            let mut interactive =
+                PreviewEngine::new(&p, dir.path(), &sid, window.path(), &progress).unwrap();
+            for at in [
+                Time::new(7, 1).unwrap(),
+                Time::new(91, 12).unwrap(),
+                Time::new(19, 3).unwrap(),
+            ] {
+                assert_eq!(
+                    interactive.video(&at, false).unwrap(),
+                    reference.video(&at, false).unwrap(),
+                    "frame {at}"
+                );
+            }
+            for at in [
+                Time::zero(),
+                Time::integer(7),
+                Time::new(162, 23).unwrap(),
+                Time::integer(9),
+            ] {
+                let a = interactive.audio_at(&at, 512).unwrap();
+                let b = reference.audio_at(&at, 512).unwrap();
+                let max = a
+                    .chunks_exact(4)
+                    .zip(b.chunks_exact(4))
+                    .map(|(a, b)| {
+                        (f32::from_le_bytes(a.try_into().unwrap())
+                            - f32::from_le_bytes(b.try_into().unwrap()))
+                        .abs()
+                    })
+                    .fold(0f32, f32::max);
+                assert!(
+                    max < 0.0001,
+                    "PCM window differs at {at} ({native_rate}Hz): {max}"
+                );
+            }
+            // A new request/Engine must reuse the same source window artifacts.
+            let before = fs::read_dir(dir.path().join("cache/decode-windows-v1"))
+                .unwrap()
+                .count();
+            let fresh = tempfile::tempdir().unwrap();
+            let mut another =
+                PreviewEngine::new(&p, dir.path(), &sid, fresh.path(), &progress).unwrap();
+            another.video(&Time::integer(7), false).unwrap();
+            let after = fs::read_dir(dir.path().join("cache/decode-windows-v1"))
+                .unwrap()
+                .count();
+            assert_eq!(
+                before, after,
+                "new seek repeated source decode instead of sharing cache"
+            );
+            let windows = fs::read_dir(dir.path().join("cache/decode-windows-v1"))
+                .unwrap()
+                .map(|e| e.unwrap().path())
+                .filter(|p| p.extension().is_some_and(|e| e == "raw"))
+                .collect::<Vec<_>>();
+            assert!(!windows.is_empty());
+            for file in windows {
+                assert!(
+                    fs::metadata(file).unwrap().len() < 64 * 48 * 8 * 12 * 6,
+                    "decoded full source instead of a window"
+                );
+            }
+        }
+    }
 }

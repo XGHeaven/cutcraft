@@ -191,12 +191,28 @@ cutcraft -p PROJECT render --sequence SEQUENCE_ID --output output/final.mp4 --pr
 
 Schema checks shapes/types; semantic checks IDs, references, times, overlap, links and animations; media checks local files, fingerprints, streams, source bounds and relevant backend availability. Runtime sampled constraints may still reject a render, so media validation alone does not establish a successful export.
 
-`sample` reports active items, evaluated properties, exact source positions and transition roles/progress without decoding images. `preview` exports only a low-resolution MP4 under project-root `cache/`, returning its path in `video` and `output`. It caps the long edge at 640 pixels and frame rate at 24 fps, with fast encoding; smaller dimensions and lower frame rates are retained. It renders the entire selected sequence at a fixed revision without changing the project or final export format. Re-run it after edits. No HTML page, `--open`, still-image capture or time-range option is available.
+`sample` reports active items, evaluated properties, exact source positions and transition roles/progress without decoding images. `preview` exports only a low-resolution MP4 under project-root `cache/`, returning its path in `video` and `output`. It caps the long edge at 640 pixels and frame rate at 24 fps, with fast encoding; smaller dimensions and lower frame rates are retained. It renders the entire selected sequence at a fixed revision without changing the project or final export format. Re-run it after edits. For interactive PNG frames and browser playback use `open`; the offline `preview` command keeps its MP4 output contract.
 
 The export is H.264/AAC MP4 with even dimensions, square pixels and Rec.709 output. There are no dedicated render flags for arbitrary codec, CRF, hardware acceleration, resolution or audio-layout selection; supported output format changes belong in the sequence, and the rest needs a different implementation. Existing destination files require --overwrite. Failures preserve the previous output, and source-file overwrite is rejected.
 
-Do not claim native project exchange with other NLEs, ASR, remote URL media resolution, a running daemon or automatic real-time/GPU processing. Use installed capabilities for the current boundary. Return the project and actual exported artifact, noting any requested feature that could not be realized.
+Do not claim native project exchange with other NLEs, ASR, remote URL media resolution or automatic real-time/GPU processing. Use installed capabilities for the current boundary. Return the project and actual exported artifact, noting any requested feature that could not be realized.
 
 Render/preview progress is JSONL on stderr with `--progress json`; stdout remains the final result JSON. Events identify validation, video/audio processing, decoding, encoding and finalization. `estimatedRemainingPhaseSeconds` estimates only the current phase; null means unknown. Only `status=completed` after atomic publication indicates completion. Errors are the existing error JSON after any progress events. `auto` is human-readable for terminals and silent otherwise.
 
 Check rendered subtitles over a visible background and inspect glyph edges. Schema/media validation does not establish visual correctness; frame sampling and signal metrics do not replace full playback review. Report the review actually performed.
+
+## 本机共同编辑
+
+使用 `cutcraft open <项目目录>` 注册项目并打开网页，`--no-browser` 只返回地址。默认 loopback 地址免登录，可重复打开；`--host localhost` / `--host ::1` 同样免登录，`--host 0.0.0.0` 等非 loopback 地址启用一次性启动码和会话认证。改变运行中服务的监听地址前须关闭所有项目；`cutcraft close <项目目录>` 关闭项目，最后一个项目关闭后退出后台进程。仅已打开项目的 CLI 命令自动转发，其他项目独立执行。导入/导出忙碌时 close 拒绝，须等待或取消任务。
+
+网页与 CLI 共享 revision 和持久历史。`history undo` / `history redo` 为项目级多步撤销重做；原 `undo` 保留旧行为。发生 revision 冲突先刷新再重试；响应丢失或服务重启后不得自动换 operationId 重复执行未知结果。详见 [本机编辑器](../../../docs/local-editor.md)。
+
+界面面向 PC 浏览器，面板随窗口调整，工具栏换行保留全部入口；时间线可在自身区域内横向滚动。网页默认以 0.5× 预览，可切换 1× / 0.25×；切换会暂停并保留位置，不修改工程或正式导出尺寸。项目管理、导入、导出、任务与片段详细属性在弹窗中，选中片段后点击 Properties 或双击打开。后端静帧/草稿/播放 API 接受连续 `scale`（有限数值，`0 < scale <= 1`）；省略时兼容 640px 上限，参见本机编辑器文档。
+
+## 单帧与区间预览
+
+`preview --at 3/2` 返回 PNG 的 `output` / `image` 路径。
+`preview --start 2 --duration 3 --scale 0.5` 返回带音频 MP4 的 `output` / `video` 路径；两者复用网页预览引擎，支持 `--sequence`、`--progress`。
+`--at` 不能和区间参数混用；区间左闭右开，不允许超出序列。时间用有理秒，scale 为 `(0,1]`。
+新增模式支持公开 0.1.0 和内部 0.4/0.5；无选项 `preview` 保留原有整段 MP4 与旧版兼容。
+结果只对应返回的 revision，不写快照或历史，输出是可重建 cache；单帧或抽帧检查不代表完整主观试听。

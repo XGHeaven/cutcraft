@@ -6,7 +6,7 @@
 
 - [SPEC.md](SPEC.md)：领域模型、时间、渲染、命令、版本与文件契约。
 - [DOMAIN_MODEL.md](DOMAIN_MODEL.md)：聚合、实体、不变量与领域服务。
-- [EFFECTS.md](EFFECTS.md)：几何变换、调色、RGB 曲线及 LUT。
+- [EFFECTS.md](EFFECTS.md)：几何变换、调色、RGB 曲线、LUT 及可动画高斯模糊。
 - [ANIMATION.md](ANIMATION.md)：通用属性动画、注册槽位与转场。
 - [RETIME.md](RETIME.md)：精确时间映射、非匀速、倒放和采样政策。
 - [IMAGE_SEQUENCES.md](IMAGE_SEQUENCES.md)：图片序列来源与固定帧清单。
@@ -32,6 +32,7 @@ my-project.cut/
 ## 示例与校验
 
 - [最小工程](examples/minimal.cutcraft.json)
+- [高斯模糊动画](examples/blur.cutcraft.json)
 - [属性动画](examples/animated.cutcraft.json)
 - [转场](examples/transition.cutcraft.json)
 - [时间重映射](examples/retime.cutcraft.json)

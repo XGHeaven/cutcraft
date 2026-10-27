@@ -585,9 +585,32 @@ pub fn validate_media(dir: &Path, a: &Value) -> Result<()> {
     Ok(())
 }
 
+pub struct PreparedImport {
+    aid: String,
+    asset: Value,
+    duration: Time,
+    fps: Time,
+    append: bool,
+    frame_count: usize,
+    file_count: usize,
+    missing: String,
+    missing_ranges: Vec<(i64, i64)>,
+    staging: Option<tempfile::TempDir>,
+}
+
+fn check_support(p: &Value) -> Result<()> {
+    ensure!(crate::capabilities::supports(text(&p["specVersion"]), crate::capabilities::Capability::ImageSequences),
+        "PROJECT_UPGRADE_REQUIRED: image sequences require Spec 0.1.0 or internal draft 0.5.0; create a new 0.1.0 project (automatic migration is not supported)");
+    Ok(())
+}
+
 pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<Value> {
-    let p = store.project()?;
-    ensure!(matches!(p["specVersion"].as_str(), Some("0.1.0" | "0.5.0")),"PROJECT_UPGRADE_REQUIRED: image sequences require Spec 0.1.0 or internal draft 0.5.0; create a new 0.1.0 project (automatic migration is not supported)");
+    check_support(&store.project()?)?;
+    commit_import(store, prepare_import(&store.dir, o)?, override_locks)
+}
+
+/// Resolve and copy the frozen manifest without holding an editing lock.
+pub fn prepare_import(dir: &Path, o: &ImportOptions) -> Result<PreparedImport> {
     ensure!(o.fps > Time::zero(), "INVALID_FRAME_RATE");
     let root = o.directory.canonicalize()?;
     ensure!(root.is_dir(), "image-sequence source must be a directory");
@@ -596,7 +619,7 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
         .map_err(|_| anyhow::anyhow!("invalid source directory"))?;
     let aid = id("asset");
     let staging = if o.managed {
-        Some(tempfile::tempdir_in(store.dir.join("assets"))?)
+        Some(tempfile::tempdir_in(dir.join("assets"))?)
     } else {
         None
     };
@@ -604,6 +627,7 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
     let mut known: BTreeMap<PathBuf, String> = BTreeMap::new();
     let mut format = None;
     for rel in &selected.files {
+        crate::media_process::check_cancellation()?;
         let path = root.join(rel);
         let target =
             url::Url::from_file_path(&path).map_err(|_| anyhow::anyhow!("invalid frame path"))?;
@@ -630,7 +654,7 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
                 fs::create_dir_all(dest.parent().unwrap())?;
                 // Keep a writable handle for FlushFileBuffers on Windows.
                 let mut copied = File::create(&dest)?;
-                std::io::copy(&mut File::open(&path)?, &mut copied)?;
+                media::copy_cancellable(&mut File::open(&path)?, &mut copied)?;
                 copied.sync_all()?;
                 ensure!(
                     media::fingerprint(&dest)? == before,
@@ -649,8 +673,7 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
     let duration = Time::integer(frames.len() as i64).div(&o.fps)?;
     let mut video = format.context("EMPTY_IMAGE_SEQUENCE")?;
     video["frameRate"] = o.fps.json()?;
-    let project_base = url::Url::from_directory_path(&store.dir).unwrap();
-    let dest = store.dir.join("assets").join(&aid);
+    let project_base = url::Url::from_directory_path(dir).unwrap();
     let root_uri = if o.managed {
         format!("assets/{aid}/")
     } else {
@@ -666,9 +689,46 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
     };
     let a = json!({"name":root.file_name().unwrap_or_default().to_string_lossy(),"kind":"media","uri":root_uri,"storage":if o.managed{"managed"}else{"external"},"availability":"online","fingerprint":{"algorithm":"sha256","value":aggregate(&frames)?},"source":{"type":"image-sequence","version":"1.0.0","frames":frames},"streams":[{"id":"stream_v0","kind":"video","index":0,"duration":duration.json()?,"video":video}]});
     validate_asset(&a)?;
+    if let Some(stage) = &staging {
+        sync_tree(stage.path())?;
+    }
+    Ok(PreparedImport {
+        aid,
+        asset: a,
+        duration,
+        fps: o.fps.clone(),
+        append: o.append,
+        frame_count: selected.files.len(),
+        file_count: known.len(),
+        missing: o.missing.clone(),
+        missing_ranges: selected.missing_ranges,
+        staging,
+    })
+}
+
+pub fn commit_import(
+    store: &Store,
+    prepared: PreparedImport,
+    override_locks: bool,
+) -> Result<Value> {
+    let p = store.project()?;
+    check_support(&p)?;
+    let PreparedImport {
+        aid,
+        asset: a,
+        duration,
+        fps,
+        append,
+        frame_count,
+        file_count,
+        missing,
+        missing_ranges,
+        staging,
+    } = prepared;
+    let dest = store.dir.join("assets").join(&aid);
     let mut commands = vec![json!({"type":"asset.put","assetId":aid,"asset":a})];
     let mut appended = Value::Null;
-    if o.append {
+    if append {
         let sid = text(&p["rootSequenceId"]);
         let tid = id("track");
         let iid = id("item");
@@ -680,7 +740,6 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
     let operation = crate::edit::operation(&p, json!({"type":"batch","commands":commands}));
     crate::edit::apply(&p, &operation, override_locks)?;
     if let Some(stage) = &staging {
-        sync_tree(stage.path())?;
         ensure!(!dest.exists(), "managed destination already exists");
         fs::rename(stage.path(), &dest)?;
         crate::store::sync_dir(&store.dir.join("assets"))?;
@@ -694,7 +753,7 @@ pub fn import(store: &Store, o: &ImportOptions, override_locks: bool) -> Result<
     }
     let committed = result?;
     Ok(
-        json!({"ok":true,"assetId":aid,"streamId":"stream_v0","sourceType":"image-sequence","revision":committed["project"]["revision"],"frameRate":o.fps.json()?,"frameCount":selected.files.len(),"fileCount":known.len(),"duration":duration.json()?,"missingPolicy":o.missing,"missingRanges":selected.missing_ranges,"append":appended}),
+        json!({"ok":true,"assetId":aid,"streamId":"stream_v0","sourceType":"image-sequence","revision":committed["project"]["revision"],"frameRate":fps.json()?,"frameCount":frame_count,"fileCount":file_count,"duration":duration.json()?,"missingPolicy":missing,"missingRanges":missing_ranges,"append":appended}),
     )
 }
 fn sync_tree(path: &Path) -> Result<()> {
