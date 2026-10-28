@@ -1,5 +1,7 @@
 # Cutcraft Project Specification 0.1.0
 
+规范修订：**`0.1.0-r1`**。此标识用于引用当前规范与 Schema 集合，不写入工程；`specVersion`、`eventVersion` 和 Schema URI 保持原有含义。详见[修订记录](REVISIONS.md)。
+
 本文中的 **MUST**、**MUST NOT**、**SHOULD** 和 **MAY** 表示规范性要求。
 
 ## 1. 范围

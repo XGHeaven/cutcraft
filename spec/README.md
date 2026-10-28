@@ -1,5 +1,7 @@
 # Cutcraft Project Specification 0.1.0
 
+当前规范修订标识：**`0.1.0-r1`**（高斯模糊扩展）。工程的 `specVersion` 仍为 `0.1.0`；修订记录和标识规则见 [REVISIONS.md](REVISIONS.md)。
+
 这是首个公开版本的协议，包含当前全部已定义能力：JSON 工程、精确时间、原子编辑与历史、视觉效果、动画、转场、时间重映射和图片序列。CLI 与 Spec 本次均从 `0.1.0` 起步，之后独立管理版本。
 
 ## 规范与 Schema

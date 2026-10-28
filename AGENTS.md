@@ -14,6 +14,7 @@
 
 - 修改持久化字段、默认值、命令或求值语义前，先定义 JSON 表示、必填/可选规则、时间单位、边界条件、错误行为及版本兼容影响，再同步规范、Schema、实现和示例。
 - **CLI 版本与协议版本独立管理。** CLI 版本在 `Cargo.toml` / `Cargo.lock`；新建工程协议版本在 `src/lib.rs`。修复渲染 bug、增加快捷命令，不自动意味着升级工程协议。
+- 规范修订标识单独记录在 [spec/REVISIONS.md](spec/REVISIONS.md)，当前为 `0.1.0-r1`。它用于追踪兼容扩展与文档修订，不写入 `specVersion` / `eventVersion` 或工程字段，也不代替组件版本、能力查询和破坏性变更所需的新协议版本。
 - 破坏兼容性的变化必须使用新协议版本和独立 Schema；不得原地重新解释旧版本数据。共享 Schema（例如生成器参数）也要检查其对旧版本的影响。
 - 内部 0.3/0.4/0.5 快照和历史继续按各自版本读取、校验、编辑。新能力可以要求新版本，但要明确报错；不得静默升级、降级、丢字段或重建用户工程。
 - 目前没有原地升级命令。不能仅修改 `specVersion` / `$schema` 冒充迁移。以后实现迁移时，需定义原子提交、校验、历史哈希保留、ID 保留及撤销边界，并提供旧版本回归用例。
@@ -74,6 +75,7 @@ CUTCRAFT_REQUIRE_FFMPEG=1 cargo test --locked
 - 命令或能力变化同步相关 `docs/`、README、Changelog 和 `skills/cutcraft/`，明确已实现能力与限制。输出复核如只做抽帧或信号检测，不能声称已完成完整主观试听。
 - Rust MSRV 当前为 1.86，构建使用 Cargo.lock。CLI 通过 GitHub Releases 分发，不发布 crates.io（`publish = false`）；发布检查、版本 tag 和本地演练遵循 [发布指南](docs/releasing.md)。
 - 发布仓库为 `XGHeaven/cutcraft`，安装脚本默认从该仓库获取最新正式 Release，并支持 `--repo` 覆盖。修改分发仓库时同步安装脚本、下载示例、技能及安装回归测试；设置默认地址不代表已经发布。
+- Unix 在线安装推荐 `curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.sh | sh`，参数通过 `sh -s --` 传入；脚本应完整解析后执行，子进程不得消费脚本标准输入，保持文件执行和离线安装兼容。重复执行对齐目标 Release，已安装相同版本则跳过下载；识别到 Cutcraft 时自动更新，`--force` 用于强制重装或处理无法识别的文件/符号链接。`--uninstall` 仅删除选定目录中的 CLI，未安装时成功退出；不下载 Release，不删除目录、工程、素材、缓存、依赖或技能。
 - 安装脚本本身从仓库 `main` 分支的 `scripts/install.sh` 获取，独立于 CLI 发版；二进制和 SHA256SUMS 从同一固定 Release tag 下载。不要将脚本入口重新绑定到 Release 附件；调整脚本分发方式时同步发布打包及安装回归测试。
 - 分发矩阵覆盖 Linux x86_64 / ARM64 / ARMv7 GNU、macOS ARM64 / x86_64 与 Windows x64 MSVC；以 `scripts/release.py` 的 TARGETS 为目标集合，同步 CI、安装器和文档。Unix 用 tar.gz，Windows 用 ZIP 和 main 分支的 `scripts/install.ps1`，安装入口不随二进制打包。
 - 交叉打包必须提供 runner 并运行实际目标二进制，不能跳过执行验证；Linux ARM 使用 QEMU 库测试及工程创建/校验，不宣称经过原生 ARM 媒体验证。Windows 执行完整媒体测试及 PowerShell 5.1/7 安装回归。新增平台上线前以 CI 的实际通过结果为准。

@@ -62,6 +62,8 @@
 
 ### 2.4 builtin.gaussian-blur / 1.0.0
 
+首次定义于规范修订 **`0.1.0-r1`**，见[修订记录](REVISIONS.md)。
+
 ```json
 {"id":"effect_01a05303-e41c-71db-94d6-b46f69526ef7","effectType":"builtin.gaussian-blur","version":"1.0.0","parameters":{"sigma":12}}
 ```

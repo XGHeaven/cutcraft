@@ -1,29 +1,39 @@
 #!/bin/sh
 # No Rust/Python required. Verify a release archive before installing its binary.
+# Parse the complete installer before executing it when streamed through a pipe.
+main() {
 set -eu
 usage() {
     cat <<'EOF'
 Usage:
+  curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.sh | sh -s -- [OPTIONS]
   install.sh [--repo OWNER/REPO] [--version VERSION|latest] [--bin-dir DIR] [--force]
   install.sh --archive FILE --checksums FILE --version VERSION [--bin-dir DIR] [--force]
+  install.sh --uninstall [--bin-dir DIR] [--force]
 
 Online installs default to the latest stable Release from XGHeaven/cutcraft.
 VERSION may have a leading v. Offline installs require an explicit VERSION.
 Default destination: $HOME/.local/bin.
-Existing installations are preserved unless --force is supplied.
+Run again to update to the selected release; matching versions are left unchanged.
+--force reinstalls matching versions or replaces unrecognized files/symlinks.
+--uninstall removes only the installed binary; --force permits unrecognized files/symlinks.
+Uninstall needs no release downloads and preserves projects, media and the Agent skill.
 FFmpeg / ffprobe and the Agent skill are installed separately.
 EOF
 }
 fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
-repo='' version='' archive='' checksums='' force=false
+repo='' version='' archive='' checksums='' force=false uninstall=false install_options=false
 bin_dir=${HOME}/.local/bin
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --help|-h) usage; exit 0 ;;
         --force) force=true; shift ;;
+        --uninstall) uninstall=true; shift ;;
         --repo|--version|--archive|--checksums|--bin-dir)
             [ "$#" -ge 2 ] || fail "Missing value for $1"
             [ -n "$2" ] || fail "Missing value for $1"
+            if [ "$1" != --bin-dir ]; then install_options=true; fi
             case "$1" in
                 --repo) repo=$2 ;;
                 --version) version=${2#v} ;;
@@ -36,8 +46,36 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 valid_version() {
+    case "$1" in *'
+'*) return 1 ;; esac
     printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$'
 }
+read_installed_version() {
+    installed_version=''
+    if [ ! -L "$bin_dir/cutcraft" ] && [ -f "$bin_dir/cutcraft" ] && [ -x "$bin_dir/cutcraft" ]; then
+        installed_output=$("$bin_dir/cutcraft" --version 2>/dev/null) || installed_output=''
+        case "$installed_output" in
+            'cutcraft '*)
+                candidate=${installed_output#cutcraft }
+                if valid_version "$candidate"; then installed_version=$candidate; fi ;;
+        esac
+    fi
+}
+if [ "$uninstall" = true ]; then
+    [ "$install_options" = false ] || fail '--uninstall cannot be combined with --repo, --version, --archive or --checksums'
+    if [ ! -e "$bin_dir/cutcraft" ] && [ ! -L "$bin_dir/cutcraft" ]; then
+        printf 'Cutcraft is not installed at %s/cutcraft\n' "$bin_dir"
+        return 0
+    fi
+    [ ! -d "$bin_dir/cutcraft" ] || fail 'Destination is a directory'
+    if [ "$force" != true ]; then
+        read_installed_version
+        [ -n "$installed_version" ] || fail 'Destination is not a recognized Cutcraft installation; use --force to remove it'
+    fi
+    rm -- "$bin_dir/cutcraft"
+    printf 'Uninstalled cutcraft from %s/cutcraft\n' "$bin_dir"
+    return 0
+fi
 case "$version" in
     ''|latest) ;;
     *) valid_version "$version" || fail 'Provide a valid --version' ;;
@@ -77,6 +115,18 @@ if [ -z "$archive" ] && { [ -z "$version" ] || [ "$version" = latest ]; }; then
     esac
     valid_version "$version" || fail 'Latest release must use a valid vVERSION tag; use --version to select another release'
 fi
+installed_version=''
+if [ -e "$bin_dir/cutcraft" ] || [ -L "$bin_dir/cutcraft" ]; then
+    [ ! -d "$bin_dir/cutcraft" ] || fail 'Destination is a directory'
+    read_installed_version
+    if [ "$force" != true ]; then
+        [ -n "$installed_version" ] || fail 'Destination is not a recognized Cutcraft installation; use --force to replace it'
+        if [ "$installed_version" = "$version" ]; then
+            printf 'Cutcraft %s is already installed at %s/cutcraft\n' "$version" "$bin_dir"
+            return 0
+        fi
+    fi
+fi
 name=cutcraft-v${version}-${target}
 asset=${name}.tar.gz
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/cutcraft-install.XXXXXX")
@@ -114,19 +164,24 @@ tar -xzOf "$tmp/$asset" "$name/cutcraft" > "$tmp/cutcraft"
 chmod 755 "$tmp/cutcraft"
 [ "$("$tmp/cutcraft" --version)" = "cutcraft $version" ] || fail 'Binary cannot run or version does not match'
 mkdir -p -- "$bin_dir"
-if [ -e "$bin_dir/cutcraft" ] || [ -L "$bin_dir/cutcraft" ]; then
-    [ "$force" = true ] || fail 'cutcraft already exists; use --force to replace it'
-    [ ! -d "$bin_dir/cutcraft" ] || fail 'Destination is a directory'
-fi
+[ ! -d "$bin_dir/cutcraft" ] || fail 'Destination is a directory'
 staged=$(mktemp "$bin_dir/.cutcraft-install.XXXXXX")
 cp -- "$tmp/cutcraft" "$staged"
 chmod 755 "$staged"
 mv -f -- "$staged" "$bin_dir/cutcraft"
 staged=
-printf 'Installed cutcraft %s to %s/cutcraft\n' "$version" "$bin_dir"
+if [ -n "$installed_version" ] && [ "$installed_version" != "$version" ]; then
+    printf 'Updated cutcraft %s -> %s at %s/cutcraft\n' "$installed_version" "$version" "$bin_dir"
+else
+    printf 'Installed cutcraft %s to %s/cutcraft\n' "$version" "$bin_dir"
+fi
 printf 'Add this directory to PATH if needed: %s\n' "$bin_dir"
 for dependency in ffmpeg ffprobe; do
     if ! command -v "$dependency" >/dev/null 2>&1; then
         printf 'Media operations additionally require %s.\n' "$dependency"
     fi
 done
+}
+
+# Children must not consume the script stream supplied to sh on stdin.
+main "$@" </dev/null

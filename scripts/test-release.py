@@ -71,9 +71,40 @@ def test(dist):
         visual = next(s for s in streams if s["codec_type"] == "video")
         assert visual["codec_name"] == "h264" and max(visual["width"], visual["height"]) <= 640
         assert abs(float(visual["duration"]) - 1.0) < 0.05
-        invoke(*base, ok=False, contains="already exists")
+        installed_stat = binary.stat()
+        invoke(*base, contains="already installed")
+        assert binary.stat().st_mtime_ns == installed_stat.st_mtime_ns
+        assert binary.stat().st_ino == installed_stat.st_ino
         invoke(*base, "--force")
         assert binary.read_bytes() == original
+        # Recognized installations update without --force, including explicit version switches.
+        for previous in ["0.0.1", "999.0.0", "0.1.0-preview.1"]:
+            binary.write_text(f'#!/bin/sh\nprintf "cutcraft {previous}\\n"\n')
+            invoke(*base, contains=f"Updated cutcraft {previous} -> {v}")
+            assert binary.read_bytes() == original
+        # Other files and symlinks still need an explicit replacement request.
+        for content in [b"unrecognized", b'#!/bin/sh\nprintf "cutcraft 0.0.1\\nextra\\n"\n']:
+            binary.write_bytes(content)
+            invoke(*base, ok=False, contains="not a recognized Cutcraft")
+            assert binary.read_bytes() == content
+            invoke(*base, "--force")
+            assert binary.read_bytes() == original
+        binary.unlink()
+        linked = tmp / "linked cutcraft"
+        linked.write_bytes(original)
+        linked.chmod(0o755)
+        binary.symlink_to(linked)
+        invoke(*base, ok=False, contains="not a recognized Cutcraft")
+        assert binary.is_symlink()
+        invoke(*base, "--force")
+        assert not binary.is_symlink() and binary.read_bytes() == original
+        assert linked.read_bytes() == original
+        binary.unlink()
+        binary.mkdir()
+        for args in [[], ["--force"]]:
+            invoke(*base, *args, ok=False, contains="Destination is a directory")
+        binary.rmdir()
+        invoke(*base)
         damaged = tmp / asset.name
         damaged.write_bytes(asset.read_bytes() + b"corruption")
         invoke("sh", installer, "--version", v, "--archive", damaged,
@@ -128,6 +159,17 @@ cp "$CUTCRAFT_TEST_DIST/${url##*/}" "$output"
         env = dict(os.environ, PATH=str(fake_bin) + os.pathsep + os.environ["PATH"],
                    CUTCRAFT_TEST_DIST=str(dist), CUTCRAFT_TEST_LOG=str(log),
                    CUTCRAFT_TEST_LATEST=f"https://github.com/example/cutcraft/releases/tag/v{v}")
+        # An interrupted pipe must not run a partially downloaded installer,
+        # even if the received prefix contains the final binary replacement.
+        script = installer.read_text()
+        interrupted_dir = tmp / "interrupted pipe"
+        for end in [script.index('case "$version"'), script.index("printf 'Installed")]:
+            log.write_text("")
+            invoke("sh", "-s", "--", "--bin-dir", interrupted_dir,
+                   input=script[:end], env=env, ok=False)
+            assert log.read_text() == ""
+            assert not interrupted_dir.exists()
+        invoke("sh", "-s", "--", "--help", input=script, contains="sh -s --")
         invoke("sh", installer, "--version", "v" + v, "--repo", "example/cutcraft", "--bin-dir", tmp / "downloaded", env=env)
         assert log.read_text().splitlines() == downloads
         # The official repository works without --repo, for both latest and pinned installs.
@@ -142,16 +184,40 @@ cp "$CUTCRAFT_TEST_DIST/${url##*/}" "$output"
             assert binary.read_bytes() == original
         for args in [[], ["--version", "latest"]]:
             log.write_text("")
+            binary.write_text('#!/bin/sh\nprintf "cutcraft 0.0.1\\n"\n')
             # Also support downloading the script and passing it to sh on stdin.
             invoke("sh", "-s", "--", "--repo", "example/cutcraft", "--bin-dir", bin_dir,
-                   "--force", *args, input=installer.read_text(), env=env)
+                   *args, input=installer.read_text(), env=env, contains=f"Updated cutcraft 0.0.1 -> {v}")
             assert log.read_text().splitlines() == [latest_url, *downloads]
             assert binary.read_bytes() == original
+            log.write_text("")
+            invoke("sh", "-s", "--", "--repo", "example/cutcraft", "--bin-dir", bin_dir,
+                   *args, input=script, env=env, contains="already installed")
+            assert log.read_text().splitlines() == [latest_url]
+        log.write_text("")
+        invoke("sh", "-s", "--", "--version", v, "--bin-dir", bin_dir,
+               input=script, env=official_env, contains="already installed")
+        assert log.read_text() == ""
+        assert binary.read_bytes() == original
+        invoke("sh", "-s", "--", "--version", v, "--bin-dir", bin_dir,
+               "--force", input=script, env=official_env)
+        assert binary.read_bytes() == original
+        invoke("sh", "-s", "--", "--version", v, "--archive", damaged,
+               "--checksums", sums, "--bin-dir", bin_dir, "--force",
+               input=script, ok=False, contains="SHA-256 mismatch")
+        assert binary.read_bytes() == original
+        binary.write_text('#!/bin/sh\nprintf "cutcraft 0.0.1\\n"\n')
+        old_install = binary.read_bytes()
         for mode, message in [("latest", "Cannot resolve latest"), ("archive", "Could not download"),
                               ("checksums", "Could not download SHA256SUMS")]:
-            invoke("sh", installer, "--repo", "example/cutcraft", "--bin-dir", bin_dir, "--force",
+            invoke("sh", installer, "--repo", "example/cutcraft", "--bin-dir", bin_dir,
                    env=dict(env, CUTCRAFT_TEST_FAIL=mode), ok=False, contains=message)
-            assert binary.read_bytes() == original
+            assert binary.read_bytes() == old_install
+        invoke("sh", installer, "--version", v, "--archive", damaged,
+               "--checksums", sums, "--bin-dir", bin_dir, ok=False, contains="SHA-256 mismatch")
+        assert binary.read_bytes() == old_install
+        invoke(*base)
+        assert binary.read_bytes() == original
         for url in [latest_url, "https://example.org/releases/tag/v" + v,
                     "https://github.com/example/cutcraft/releases/tag/v../invalid"]:
             log.write_text("")
@@ -210,8 +276,51 @@ cp "$CUTCRAFT_TEST_DIST/${url##*/}" "$output"
         invoke("sh", skill_installer, skill_dir)
         assert (skill_dir / "cutcraft/SKILL.md").read_bytes() == (ROOT / "skills/cutcraft/SKILL.md").read_bytes()
         invoke("sh", skill_installer, skill_dir, ok=False, contains="Already exists")
+        # Uninstall is local, idempotent and limited to the selected executable.
+        uninstall_args = ["--uninstall", "--bin-dir", bin_dir]
+        neighbor = bin_dir / "keep.txt"
+        neighbor.write_text("keep")
+        preserved = [project / "cutcraft.json", source, video, neighbor,
+                     skill_dir / "cutcraft/SKILL.md"]
+        before_uninstall = {path: path.read_bytes() for path in preserved}
+        for option in ["--version", "--repo", "--archive", "--checksums"]:
+            invoke("sh", installer, *uninstall_args, option, "unused",
+                   ok=False, contains="cannot be combined")
+            assert binary.read_bytes() == original
+        # Even a prefix containing the removal code must not uninstall anything.
+        invoke("sh", "-s", "--", *uninstall_args,
+               input=script[:script.index('case "$version"')], ok=False)
+        assert binary.read_bytes() == original
+        log.write_text("")
+        invoke("sh", "-s", "--", *uninstall_args, input=script, env=env,
+               contains="Uninstalled cutcraft")
+        assert not binary.exists() and bin_dir.is_dir()
+        assert log.read_text() == ""  # No downloads; fake uname is also unsupported here.
+        invoke("sh", installer, *uninstall_args, env=env, contains="not installed")
+        for path, content in before_uninstall.items():
+            assert path.read_bytes() == content
+        missing_dir = tmp / "not created"
+        invoke("sh", installer, "--uninstall", "--bin-dir", missing_dir, contains="not installed")
+        assert not missing_dir.exists()
+        binary.write_text("not cutcraft")
+        invoke("sh", installer, *uninstall_args, ok=False, contains="not a recognized Cutcraft")
+        assert binary.read_text() == "not cutcraft"
+        invoke("sh", installer, *uninstall_args, "--force", contains="Uninstalled cutcraft")
+        for target in [linked, tmp / "missing target"]:
+            binary.symlink_to(target)
+            invoke("sh", installer, *uninstall_args, ok=False, contains="not a recognized Cutcraft")
+            assert binary.is_symlink()
+            invoke("sh", installer, *uninstall_args, "--force")
+            assert not binary.is_symlink()
+            assert linked.read_bytes() == original
+        binary.mkdir()
+        marker = binary / "keep.txt"
+        marker.write_text("keep")
+        for args in [[], ["--force"]]:
+            invoke("sh", installer, *uninstall_args, *args, ok=False, contains="Destination is a directory")
+            assert marker.read_text() == "keep"
         assert not list(bin_dir.glob(".cutcraft-install.*"))
-    print("Release checks passed: archives, version/tag, installed CLI/media preview, corruption/overwrite protection, pinned/latest downloads, network failures, platform guard, skill installation.")
+    print("Release checks passed: archives, version/tag, installed CLI/media preview, automatic updates/version switches, same-version no-op, corruption/overwrite protection, file/piped installs, interrupted script downloads, pinned/latest downloads, network failures, platform guard, skill installation, local/idempotent uninstall and retained user files.")
 
 
 if __name__ == "__main__":

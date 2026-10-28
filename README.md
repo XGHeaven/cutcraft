@@ -11,13 +11,12 @@ macOS Apple Silicon / Intel 和 Windows x64。具体下载文件以 Release 附�
 从仓库 `main` 分支下载安装脚本，再由脚本安装 [最新正式版 CLI](https://github.com/XGHeaven/cutcraft/releases)：
 
 ```sh
-curl --fail --location --proto '=https' --proto-redir '=https' \
-  https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.sh -o install.sh && \
-  sh install.sh
+curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.sh | sh
 ```
 
-默认安装到 `~/.local/bin`。可用 `--version 0.1.0` 固定版本、`--force` 更新已有安装；
-也支持本地压缩包离线安装，详见 [安装说明](docs/install.md)。
+默认安装到 `~/.local/bin`，再次运行同一条命令即可更新到最新正式版；版本相同时直接退出。
+管道末尾改为 `sh -s -- --version 0.1.0` 可切换到指定版本；
+卸载时改为 `sh -s -- --uninstall`。也支持本地压缩包离线安装，详见 [安装说明](docs/install.md)。
 二进制安装不需要 Rust 或 Python；媒体操作需要外部 FFmpeg / ffprobe。
 Windows 使用 `scripts/install.ps1`，平台要求和 PowerShell 安装方式见 [安装说明](docs/install.md#windows-powershell)。
 
@@ -43,20 +42,19 @@ cargo install --locked --path .
 
 技能目录可以随仓库分发，也可以单独复制；技能不是 CLI 二进制，媒体操作仍需安装 Cutcraft 和 `ffmpeg` / `ffprobe`。文档区分专用 CLI 命令、JSON 领域命令和当前未实现的能力。
 
-从仓库根目录安装到 Codex：
+安装 Node.js / npm 后，通过 [Skills CLI](https://github.com/vercel-labs/skills/blob/main/docs/commands.md) 安装：
 
 ```sh
-cargo install --locked --path .
-./scripts/install-skill.sh
+npx skills add XGHeaven/cutcraft --skill cutcraft
 ```
 
-默认安装到 `${CODEX_HOME:-$HOME/.codex}/skills/cutcraft`。如需其他兼容 Agent 的技能目录，可显式指定其父目录：
+按提示选择 Agent；默认安装到当前项目，加 `-g` 可全局安装。例如全局安装到 Codex：
 
 ```sh
-./scripts/install-skill.sh /path/to/agent/skills
+npx skills add XGHeaven/cutcraft --skill cutcraft -g -a codex
 ```
 
-安装脚本只复制技能，不安装依赖，也不覆盖已有技能。已有安装会报错并保留原文件；更新时请先备份并移走旧的 `cutcraft` 技能目录，再安装新版。安装后在新会话中使用，例如：
+此命令只安装技能，Cutcraft CLI 和 FFmpeg 需分别安装。离线方式见 [安装说明](docs/install.md#安装-agent-技能)。安装后在新会话中使用，例如：
 
 > 使用 $cutcraft，把指定文件夹中的视频剪成 30 秒短片，项目和导出都放在我指定的目录中。
 
