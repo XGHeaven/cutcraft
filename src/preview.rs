@@ -107,34 +107,6 @@ fn frame_key(
         &json!({"project":project,"fonts":crate::fonts::signatures(project,dir)?,"sequenceId":sid,"at":at.json()?,"scale":scale,"profile":"interactive-v4","renderer":env!("CARGO_PKG_VERSION")}),
     )
 }
-fn publish(path: &Path, bytes: &[u8]) -> Result<()> {
-    crate::store::atomic_write(path, bytes)
-}
-pub(crate) fn prune_artifacts(cache: &Path, keep: &Path) -> Result<()> {
-    let mut entries = fs::read_dir(cache)?
-        .filter_map(|e| e.ok())
-        .filter_map(|e| {
-            let m = e.metadata().ok()?;
-            m.is_file().then(|| (e.path(), m.len(), m.modified().ok()))
-        })
-        .collect::<Vec<_>>();
-    entries.sort_by_key(|(_, _, time)| *time);
-    let mut count = entries.len();
-    let mut total: u64 = entries.iter().map(|(_, n, _)| n).sum();
-    for (path, len, _) in entries {
-        if count <= 256 && total <= 64 * 1024 * 1024 {
-            break;
-        }
-        if path == keep {
-            continue;
-        }
-        if fs::remove_file(path).is_ok() {
-            count -= 1;
-            total = total.saturating_sub(len);
-        }
-    }
-    Ok(())
-}
 /// Return a final composed PNG at an exact timeline time. PNG pixels use sRGB.
 pub fn frame(
     project: &Value,
@@ -156,10 +128,12 @@ pub fn frame_scaled(
     validate_scale(scale)?;
     ensure!(at.nonnegative(), "preview time must be non-negative");
     validate(project, dir, progress)?;
-    let cache = dir.join("cache").join("interactive-v1");
-    fs::create_dir_all(&cache)?;
+    let manager = crate::cache::Manager::new(dir);
+    let cache = manager.directory(crate::cache::Kind::Frames)?;
     let output = cache.join(format!("{}.png", frame_key(project, dir, sid, at, scale)?));
-    let scratch = tempfile::tempdir_in(&cache)?;
+    let entry = manager.entry(&output)?;
+    let _build = entry.build_lock()?;
+    let scratch = manager.scratch()?;
     let mut engine = PreviewEngine::with_scale(project, dir, sid, scratch.path(), progress, scale)?;
     let metadata = json!({"revision":project["revision"],"sequenceId":sid,"time":at.json()?,"width":engine.width,"height":engine.height,"scale":scale,"mime":"image/png"});
     let reusable = project["assets"]
@@ -170,7 +144,7 @@ pub fn frame_scaled(
             !crate::image_sequence::is_sequence(asset) && asset["fingerprint"]["value"].is_string()
         });
     if reusable && output.is_file() {
-        let bytes = fs::read(output)?;
+        let bytes = entry.read()?;
         progress.finish();
         return Ok(PreviewFrame { bytes, metadata });
     }
@@ -213,8 +187,7 @@ pub fn frame_scaled(
         String::from_utf8_lossy(&result.stderr)
     );
     progress.check_cancelled()?;
-    publish(&output, &result.stdout)?;
-    prune_artifacts(&cache, &output)?;
+    entry.publish(&result.stdout)?;
     progress.finish();
     Ok(PreviewFrame {
         bytes: result.stdout,
@@ -271,13 +244,15 @@ pub fn export(
         "PREVIEW_RANGE_OUT_OF_BOUNDS: require 0 <= start < start+duration <= sequence duration"
     );
     validate(project, dir, progress)?;
-    let cache = dir.join("cache").join("preview-ranges-v1");
-    fs::create_dir_all(&cache)?;
+    let manager = crate::cache::Manager::new(dir);
+    let cache = manager.directory(crate::cache::Kind::Ranges)?;
     let key = crate::store::hash(
         &json!({"project":project,"sequenceId":sid,"start":start.json()?,"duration":duration.json()?,"scale":options.scale,"profile":"preview-range-v2","renderer":env!("CARGO_PKG_VERSION")}),
     )?;
     let output = cache.join(format!("{key}.mp4"));
-    let scratch = tempfile::tempdir_in(&cache)?;
+    let entry = manager.entry(&output)?;
+    let _build = entry.build_lock()?;
+    let scratch = manager.scratch()?;
     let mut engine =
         PreviewEngine::with_scale(project, dir, sid, scratch.path(), progress, options.scale)?;
     let frames = duration.mul(&engine.fps).ceil_i64()?;
@@ -313,11 +288,7 @@ pub fn export(
         .args(["-filter_threads","2","-vf","scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=range=limited:colorspace=bt709:color_primaries=bt709:color_trc=bt709","-c:v","libx264","-threads","2","-preset","ultrafast","-crf","28","-c:a","aac","-movflags","+faststart"]).arg(&rendered), "encode", Some(frames as u64))?;
     progress.start("finalize", None, "files");
     progress.check_cancelled()?;
-    let mut staged = tempfile::NamedTempFile::new_in(&cache)?;
-    std::io::copy(&mut fs::File::open(&rendered)?, &mut staged)?;
-    staged.as_file().sync_all()?;
-    staged.persist(&output).map_err(|e| e.error)?;
-    crate::store::sync_dir(&cache)?;
+    entry.publish_file(&rendered)?;
     progress.finish();
     Ok(
         json!({"ok":true,"output":output,"video":output,"preview":true,"revision":project["revision"],"sequenceId":sid,"startTime":start.json()?,"duration":duration.json()?,"frames":frames,"audioSamples":samples,"width":engine.width,"height":engine.height,"scale":options.scale,"frameRate":engine.fps.json()?,"audioSampleRate":engine.rate,"mime":"video/mp4"}),
@@ -426,7 +397,7 @@ pub fn playback_scaled(
         !out_dir.join("stream.m3u8").exists(),
         "PREVIEW_SESSION_EXISTS"
     );
-    let scratch = tempfile::tempdir_in(out_dir)?;
+    let scratch = crate::cache::Manager::new(dir).scratch()?;
     let mut engine = PreviewEngine::with_scale(project, dir, sid, scratch.path(), progress, scale)?;
     ensure!(start < &engine.duration, "PREVIEW_TIME_OUT_OF_BOUNDS");
     let first = start.mul(&engine.fps).ceil_i64()?;
@@ -454,7 +425,7 @@ pub fn playback_scaled(
     };
     let mime = format!("video/mp4; codecs=\"{codec},mp4a.40.2\"");
     let metadata = json!({"revision":project["revision"],"sequenceId":sid,"startTime":origin.json()?,"requestedTime":start.json()?,"duration":engine.duration.json()?,"width":engine.width,"height":engine.height,"scale":scale,"frameRate":engine.fps.json()?,"audioSampleRate":engine.rate,"audioOffset":audio_offset.json()?,"mime":mime,"playlist":"stream.m3u8","playlistWindowSegments":24,"segmentTargetDuration":{"num":1,"den":2},"expiredPlayback":"restart-at-current-time"});
-    publish(
+    crate::store::atomic_write(
         &out_dir.join("metadata.json"),
         &serde_json::to_vec(&metadata)?,
     )?;
@@ -579,13 +550,15 @@ pub fn thumbnail(
         matches!(text(&stream["kind"]), "image" | "video"),
         "THUMBNAIL_REQUIRES_VIDEO"
     );
-    let cache = dir.join("cache").join("interactive-v1");
-    fs::create_dir_all(&cache)?;
+    let manager = crate::cache::Manager::new(dir);
+    let cache = manager.directory(crate::cache::Kind::Frames)?;
     let root = text(&project["rootSequenceId"]);
     let thumb_key = crate::store::hash(
         &json!({"asset":asset,"streamId":stream_id,"format":project["sequences"][root]["format"],"profile":"thumbnail-v2"}),
     )?;
     let thumbnail_path = cache.join(format!("thumbnail-{thumb_key}.png"));
+    let entry = manager.entry(&thumbnail_path)?;
+    let _build = entry.build_lock()?;
     let (width, height) = crate::frame_render::dimensions(
         project["sequences"][root]["format"]["width"]
             .as_u64()
@@ -597,7 +570,7 @@ pub fn thumbnail(
     );
     if asset["fingerprint"]["value"].is_string() && thumbnail_path.is_file() {
         return Ok(PreviewFrame {
-            bytes: fs::read(&thumbnail_path)?,
+            bytes: entry.read()?,
             metadata: json!({"assetId":asset_id,"streamId":stream_id,"revision":project["revision"],"mime":"image/png","width":width,"height":height}),
         });
     }
@@ -634,8 +607,7 @@ pub fn thumbnail(
     let mut result = frame(&p, dir, &sid, &Time::zero(), progress)?;
     result.metadata["assetId"] = json!(asset_id);
     result.metadata["streamId"] = json!(stream_id);
-    publish(&thumbnail_path, &result.bytes)?;
-    prune_artifacts(&cache, &thumbnail_path)?;
+    entry.publish(&result.bytes)?;
     Ok(result)
 }
 
@@ -660,11 +632,13 @@ pub fn waveform(
     let key = crate::store::hash(
         &json!({"path":source_path,"sourceSize":source_stat.len(),"sourceModified":format!("{:?}",source_stat.modified().ok()),"fingerprint":asset["fingerprint"],"stream":stream_id,"profile":"peaks-1024-native-v1"}),
     )?;
-    let cache = dir.join("cache").join("interactive-v1");
-    fs::create_dir_all(&cache)?;
+    let manager = crate::cache::Manager::new(dir);
+    let cache = manager.directory(crate::cache::Kind::Frames)?;
     let output = cache.join(format!("waveform-{key}.json"));
+    let entry = manager.entry(&output)?;
+    let _build = entry.build_lock()?;
     if output.is_file() {
-        let mut result: Value = serde_json::from_slice(&fs::read(output)?)?;
+        let mut result: Value = serde_json::from_slice(&entry.read()?)?;
         result["assetId"] = json!(asset_id);
         result["streamId"] = json!(stream_id);
         return Ok(result);
@@ -682,7 +656,7 @@ pub fn waveform(
         .context("audio sample rate")?;
     let samples = duration.mul(&Time::integer(rate)).ceil_i64()?.max(1) as usize;
     let bins = 1024usize.min(samples);
-    let scratch = tempfile::tempdir_in(&cache)?;
+    let scratch = manager.scratch()?;
     let raw = scratch.path().join("audio.f32");
     progress.ffmpeg(
         Command::new("ffmpeg")
@@ -724,8 +698,7 @@ pub fn waveform(
     }
     let result = json!({"assetId":asset_id,"streamId":stream_id,"duration":duration.json()?,"peaks":peaks,"sampleCount":n,"sampleRate":rate});
     progress.check_cancelled()?;
-    publish(&output, &serde_json::to_vec(&result)?)?;
-    prune_artifacts(&cache, &output)?;
+    entry.publish(&serde_json::to_vec(&result)?)?;
     progress.finish();
     Ok(result)
 }

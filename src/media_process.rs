@@ -119,6 +119,7 @@ pub(crate) fn graph_file_option() -> anyhow::Result<&'static str> {
         return Ok(option);
     }
     let output = Command::new("ffmpeg")
+        .stdin(std::process::Stdio::null())
         .args(["-hide_banner", "-h", "full"])
         .media_output()?;
     anyhow::ensure!(output.status.success(), "FFMPEG_CAPABILITY_CHECK_FAILED");

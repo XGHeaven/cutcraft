@@ -77,6 +77,43 @@ impl Drop for HostTest {
 }
 
 #[test]
+fn cache_commands_route_through_host_without_editing_project() {
+    let host = HostTest::new();
+    host.success(&["open", host.project.to_str().unwrap(), "--no-browser"]);
+    let before = std::fs::read(host.project.join("cutcraft.json")).unwrap();
+    let history = std::fs::read(host.project.join("history.jsonl")).unwrap();
+    let manager = cutcraft::cache::Manager::new(&host.project);
+    let path = manager
+        .directory(cutcraft::cache::Kind::Frames)
+        .unwrap()
+        .join(format!("{}.png", "c".repeat(64)));
+    std::fs::write(&path, b"png").unwrap();
+    let args = ["-p", host.project.to_str().unwrap(), "cache"];
+    assert_eq!(
+        host.success(&[args.as_slice(), &["status"]].concat())["bytes"],
+        3
+    );
+    assert_eq!(
+        host.success(&[args.as_slice(), &["clean", "--dry-run"]].concat())["removedBytes"],
+        3
+    );
+    assert!(path.exists());
+    assert_eq!(
+        host.success(&[args.as_slice(), &["clean"]].concat())["removedBytes"],
+        3
+    );
+    assert!(!path.exists());
+    assert_eq!(
+        std::fs::read(host.project.join("cutcraft.json")).unwrap(),
+        before
+    );
+    assert_eq!(
+        std::fs::read(host.project.join("history.jsonl")).unwrap(),
+        history
+    );
+}
+
+#[test]
 fn local_host_routes_open_projects_and_replays_requests_without_changing_operations() {
     let host = HostTest::new();
     let opened = host.success(&["open", host.project.to_str().unwrap(), "--no-browser"]);

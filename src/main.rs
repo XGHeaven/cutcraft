@@ -2,9 +2,16 @@ use clap::Parser;
 use cutcraft::app::{self, Cli};
 
 fn main() {
-    let result = app::dispatch(Cli::parse());
+    let cli = Cli::parse();
+    let doctor = matches!(cli.command, app::Cmd::Doctor { .. });
+    let result = app::dispatch(cli);
     match result {
-        Ok(value) => println!("{}", serde_json::to_string_pretty(&value).unwrap()),
+        Ok(value) => {
+            println!("{}", serde_json::to_string_pretty(&value).unwrap());
+            if doctor && value["ok"] == false {
+                std::process::exit(1);
+            }
+        }
         Err(error) => {
             let mut detail =
                 if let Some(remote) = error.downcast_ref::<cutcraft::daemon::RemoteError>() {

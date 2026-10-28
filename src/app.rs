@@ -94,6 +94,11 @@ pub enum Cmd {
         #[arg(long, default_value = "#000000")]
         color: String,
     },
+    /// Inspect or reclaim disposable project caches.
+    Cache {
+        #[command(subcommand)]
+        command: CacheCmd,
+    },
     /// Read the canonical project snapshot.
     Inspect,
     /// Validate project, operation or event JSON offline; optionally check media files.
@@ -259,8 +264,21 @@ pub enum Cmd {
         #[arg(long, value_enum, default_value = "auto")]
         progress: ProgressMode,
     },
+    /// Diagnose local FFmpeg/ffprobe capabilities and media processing.
+    Doctor {
+        /// Timeout in seconds for each external check (1-120).
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=120))]
+        timeout: u64,
+    },
     /// Describe the media backend's supported profile.
     Capabilities,
+}
+#[derive(Clone, Debug, Subcommand, Serialize, Deserialize)]
+pub enum CacheCmd {
+    /// Report managed bytes, budgets and protected/in-use entries.
+    Status,
+    /// Remove reclaimable entries; --dry-run reports without deleting.
+    Clean,
 }
 #[derive(Clone, Debug, Subcommand, Serialize, Deserialize)]
 pub enum HistoryCmd {
@@ -765,6 +783,7 @@ pub fn dispatch(cli: Cli) -> Result<Value> {
             | Cmd::Id { .. }
             | Cmd::Schema { .. }
             | Cmd::Capabilities
+            | Cmd::Doctor { .. }
             | Cmd::Init { .. }
     ) {
         if let Some(result) = crate::daemon::route(&cli)? {
@@ -992,6 +1011,7 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
         }
         Cmd::Id { prefix } => return Ok(json!({"id":id(&prefix)})),
         Cmd::Capabilities => return Ok(render::capabilities()),
+        Cmd::Doctor { timeout } => return crate::doctor::run(timeout),
         Cmd::Schema { kind } => {
             return Ok(serde_json::from_str(
                 schema::SCHEMAS
@@ -1070,6 +1090,14 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
     }
     let store = open_store(&cli.project)?;
     match cli.command {
+        Cmd::Cache { command } => {
+            let manager = crate::cache::Manager::new(&store.dir);
+            let project = store.project()?;
+            match command {
+                CacheCmd::Status => manager.status(&project),
+                CacheCmd::Clean => manager.clean(&project, dry),
+            }
+        },
         Cmd::Inspect=>store.project(),Cmd::History{command}=>match command {
             None=>Ok(json!(store.history()?)),
             Some(HistoryCmd::Undo)=>store.history_undo(override_locks,dry),

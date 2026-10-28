@@ -190,9 +190,9 @@ pub fn export(
         .context("width")?
         .max(seq["format"]["height"].as_f64().context("height")?);
     let scale = selection.scale.unwrap_or((320. / long_edge).min(1.));
-    let cache = dir.join("cache/preview-sheets-v1");
-    fs::create_dir_all(&cache)?;
-    let scratch = tempfile::tempdir_in(&cache)?;
+    let manager = crate::cache::Manager::new(dir);
+    let cache = manager.directory(crate::cache::Kind::Sheets)?;
+    let scratch = manager.scratch()?;
     let mut engine =
         PreviewEngine::with_scale(project, dir, sid, scratch.path(), progress, Some(scale))?;
     // Labels are outside the picture. A minimum width keeps exact i64 rational times readable.
@@ -284,8 +284,9 @@ pub fn export(
     let output = cache.join(format!("{key}.png"));
     progress.start("finalize", None, "files");
     progress.check_cancelled()?;
-    crate::store::atomic_write(&output, &result.stdout)?;
-    preview::prune_artifacts(&cache, &output)?;
+    let entry = manager.entry(&output)?;
+    let _build = entry.build_lock()?;
+    entry.publish(&result.stdout)?;
     progress.finish();
     Ok(
         json!({"ok":true,"preview":true,"mode":mode,"output":output,"image":output,"mime":"image/png","revision":project["revision"],"sequenceId":sid,"width":width,"height":height,"columns":plan.columns,"scale":scale,"frameRate":plan.fps.json()?,"cells":cells,"boundaries":plan.boundaries}),

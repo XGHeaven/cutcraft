@@ -4,6 +4,8 @@ Cutcraft 通过 GitHub Releases 分发可执行文件，不发布到 crates.io�
 运行 CLI 不需要 Rust 或 Python。媒体导入、预览和渲染另需 FFmpeg 6.1+ 的 `ffmpeg` 与 `ffprobe`，
 且 FFmpeg 构建需要包含 libx264、FFV1 和 drawtext；默认字体取决于本机环境。
 
+安装完成后运行 `cutcraft doctor`，无需创建工程。它检查 FFmpeg / ffprobe 版本和所需组件，并进行小型文字、编码、探测及解码测试；失败仍返回完整 JSON 报告和退出码 1。每项默认超时 10 秒，可用 `--timeout 20` 调整，详见[环境诊断](doctor.md)。
+
 ## 支持平台
 
 | 系统 | Release 文件中的 target | 支持范围 |

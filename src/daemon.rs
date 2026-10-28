@@ -137,6 +137,8 @@ struct Task {
     value: Mutex<Value>,
     cancellation: crate::progress::CancellationToken,
     directory: Option<PathBuf>,
+    cache: crate::cache::Manager,
+    cache_lease: Mutex<Option<crate::cache::Entry>>,
     finished: watch::Sender<bool>,
     completed: Mutex<Option<Instant>>,
 }
@@ -1253,6 +1255,14 @@ fn create_task(
         "TASK_CAPACITY: wait for active tasks to finish"
     );
     let id = crate::id("task");
+    let cache = crate::cache::Manager::new(&entry.path);
+    let cache_lease = directory
+        .as_ref()
+        .map(|path| cache.entry(path))
+        .transpose()?;
+    if let Some(directory) = &directory {
+        fs::create_dir_all(directory)?;
+    }
     let (finished, _) = watch::channel(false);
     let task = Arc::new(Task {
         value: Mutex::new(
@@ -1260,6 +1270,8 @@ fn create_task(
         ),
         cancellation: crate::progress::CancellationToken::default(),
         directory,
+        cache,
+        cache_lease: Mutex::new(cache_lease),
         finished,
         completed: Mutex::new(None),
     });
@@ -1280,46 +1292,32 @@ fn prune_tasks(state: &Shared) {
         .collect();
     completed.sort_by_key(|(_, when)| *when);
     let excess = completed.len().saturating_sub(256);
-    let mut bytes: u64 = tasks
-        .values()
-        .filter_map(|task| task.directory.as_deref())
-        .map(preview_bytes)
-        .sum();
     for (index, (id, when)) in completed.into_iter().enumerate() {
-        if index < excess || when.elapsed() > Duration::from_secs(1800) || bytes > 512 * 1024 * 1024
-        {
+        if index < excess || when.elapsed() > Duration::from_secs(1800) {
             if let Some(task) = tasks.remove(&id) {
                 if let Some(directory) = &task.directory {
-                    bytes = bytes.saturating_sub(preview_bytes(directory));
-                    let _ = fs::remove_dir_all(directory);
+                    let _ = task.cache.discard(directory);
                 }
             }
         }
     }
 }
-fn preview_bytes(directory: &Path) -> u64 {
-    fs::read_dir(directory)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| entry.metadata().ok())
-        .map(|metadata| metadata.len())
-        .sum()
-}
 fn cancel_preview(task: &Task) {
     task.cancellation.cancel();
     if task.completed.lock().unwrap().is_some() {
         if let Some(directory) = &task.directory {
-            let _ = fs::remove_dir_all(directory);
+            let _ = task.cache.discard(directory);
         }
     }
 }
 fn check_preview_budget(task: &Task) {
-    let Some(directory) = &task.directory else {
-        return;
-    };
-    let bytes = preview_bytes(directory);
-    if bytes > 128 * 1024 * 1024 {
+    let bytes = task
+        .cache_lease
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map_or(0, crate::cache::Entry::bytes);
+    if bytes > crate::cache::PLAYBACK_SESSION_BYTES {
         task.value.lock().unwrap()["cancelReason"] = json!("PREVIEW_CACHE_LIMIT");
         task.cancellation.cancel();
     }
@@ -1347,11 +1345,15 @@ fn complete_task(state: &Shared, task: &Task, result: Result<Value>) {
         }
     }
     publish_task(state, task);
+    task.cache_lease.lock().unwrap().take();
     *task.completed.lock().unwrap() = Some(Instant::now());
     if task.cancellation.is_cancelled() {
         if let Some(directory) = &task.directory {
-            let _ = fs::remove_dir_all(directory);
+            let _ = task.cache.discard(directory);
         }
+    }
+    if task.directory.is_some() {
+        let _ = task.cache.trim();
     }
     task.finished.send_replace(true);
 }
@@ -1749,7 +1751,6 @@ async fn preview_playback(
         .join("daemon-preview")
         .join(&state.runtime.instance_id)
         .join(secret());
-    fs::create_dir_all(&directory)?;
     let (id, task) = create_task(&state, &entry, "preview", Some(directory.clone()))?;
     task.value.lock().unwrap()["previewType"] = json!("playback");
     task.value.lock().unwrap()["revision"] = snapshot["revision"].clone();
@@ -1804,6 +1805,7 @@ async fn task_file(
         matches!(file.as_str(), "init.mp4" | "stream.m3u8" | "metadata.json") || segment,
         "invalid preview file",
     )?;
+    let _lease = task.cache.entry(directory)?;
     let bytes = match fs::read(directory.join(&file)) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

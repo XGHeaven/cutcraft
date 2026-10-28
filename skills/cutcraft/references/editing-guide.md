@@ -14,6 +14,16 @@ Commands below use placeholders such as PROJECT, SEQUENCE_ID, TRACK_ID and ITEM_
 - `project.update` changes allowed top-level properties, such as name or rootSequenceId. It is not an arbitrary JSON Patch endpoint.
 - `asset.remove` removes a project record; it is not a command to delete the original media from disk. References must be resolved or explicitly cascaded. Cascade can remove timeline items and related links/transitions; inspect the affected scope first.
 
+### Cache maintenance
+
+```sh
+cutcraft -p PROJECT cache status
+cutcraft -p PROJECT cache clean --dry-run
+cutcraft -p PROJECT cache clean
+```
+
+The shared manager tracks PNG/thumbnail/waveform/text, decode windows, preview MP4/sheets, browser playback and temporary work. Default disk target: 1 GiB per project; decode/playback each 512 MiB; frames, text and sheets each 64 MiB/256 entries. Active work and current asset references are protected, so usage can temporarily exceed the target. `clean` removes only recognized reclaimable entries and preserves project/history, original media, unknown files, symlinks and stable coordination locks. `--dry-run` reports the prospective removal without deleting data. Cache hits refresh recency; keys and validity remain feature-specific. Session-local memory buffers have independent limits. Cache cleanup does not change specVersion or revision.
+
 ### Search and locate
 
 ```sh
@@ -237,3 +247,12 @@ cutcraft -p PROJECT preview --boundaries --at 3/2
 边界帧使用工程帧率：after 帧号为 `ceil(boundary*fps)`，before 减一，时间为帧号除以 fps。它们是实际输出帧网格上的两侧画面，不是对边界时间减浮点 epsilon。序列首尾缺少的一侧为 N/A，JSON time/frameIndex 为 null；非常短的片段可能没有输出帧。检查的是最终合成画面，包含实际转场、字幕和叠层；缩略图不能替代区间播放、试听，也不会自动证明不存在黑帧或剪辑错误。
 
 `--sheet` / `--boundaries` 互斥，count/columns/interval 仅用于 sheet；sheet 不与 at 组合，at 不与 start/duration 组合。支持公开 0.1.0 和内部 0.4/0.5；内部 0.3 不支持，不改版本绕过。输出在可重建的 `cache/preview-sheets-v1/` 中，工程、历史和媒体保持不变。
+
+
+## 环境诊断
+
+运行 `cutcraft doctor` 检查当前 CLI 的 FFmpeg / ffprobe 环境，无需创建或打开工程。需要时用 `--timeout 20` 调整每项外部检查的超时（默认 10 秒，1–120）。它检查版本、必需编码器/滤镜、文件滤镜图参数，并在自动清理的临时目录测试文字 PNG、FFV1/PCM、H.264/AAC MP4 和探测/解码。
+
+检查完成后 stdout 总是完整 JSON，`checks` 的 status 为 passed/failed/warning/skipped，包含具体缺失组件或错误 code、hint；任一 failed 时退出码为 1，不要因此丢弃 stdout 的报告。区分 MEDIA_TOOL_NOT_FOUND、MEDIA_TOOL_PERMISSION_DENIED、MEDIA_TOOL_TIMEOUT 和组件缺失，不要把所有错误当作“未安装”。该命令不安装工具或修改工程；发现问题后按报告处理。
+
+该诊断不转发到已打开工程的服务进程。修改 PATH 后重启旧编辑器服务，不能用当前 CLI 的成功诊断证明旧服务环境已更新。doctor 只检查基础媒体路径和默认字体，具体素材、苹方字形、颜色声明仍需项目 `validate --level media` 及预览验证。

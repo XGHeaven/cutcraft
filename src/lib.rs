@@ -1,6 +1,8 @@
 pub mod app;
+pub mod cache;
 pub mod capabilities;
 pub mod daemon;
+pub mod doctor;
 pub mod edit;
 pub mod fonts;
 pub mod media;

@@ -16,50 +16,16 @@ use std::{
     io::{BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::Command,
-    sync::{Arc, Mutex, OnceLock, Weak},
+    sync::{Mutex, OnceLock},
 };
 static WINDOW_BUILD: Mutex<()> = Mutex::new(());
-static WINDOW_LEASES: OnceLock<Mutex<HashMap<PathBuf, Weak<()>>>> = OnceLock::new();
 static VIDEO_WINDOW_INDEX: OnceLock<Mutex<HashMap<String, Vec<Time>>>> = OnceLock::new();
 static NATIVE_CACHE: OnceLock<Mutex<HashMap<String, Value>>> = OnceLock::new();
-fn prune_windows(cache: &Path) -> Result<()> {
-    let mut files = fs::read_dir(cache)?
-        .filter_map(|e| e.ok())
-        .filter_map(|e| {
-            let p = e.path();
-            if p.extension()?.to_str()? != "raw" {
-                return None;
-            }
-            let m = e.metadata().ok()?;
-            Some((p, m.len(), m.modified().ok()))
-        })
-        .collect::<Vec<_>>();
-    let mut total: u64 = files.iter().map(|(_, n, _)| n).sum();
-    files.sort_by_key(|(_, _, time)| *time);
-    let leases = WINDOW_LEASES
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap();
-    for (path, len, _) in files {
-        if total <= 512 * 1024 * 1024 {
-            break;
-        }
-        if leases.get(&path).and_then(Weak::upgrade).is_some() {
-            continue;
-        }
-        if fs::remove_file(&path).is_ok() {
-            let _ = fs::remove_file(path.with_extension("pts"));
-            let _ = fs::remove_file(path.with_extension("ready"));
-            total = total.saturating_sub(len);
-        }
-    }
-    Ok(())
-}
 type Frame = Vec<[f64; 4]>; // linear-sRGB, premultiplied alpha
 struct Source {
-    _lease: Option<Arc<()>>,
     pcm: Option<Vec<f32>>,
     file: File,
+    _lease: Option<crate::cache::Entry>,
     pts: Vec<Time>,
     w: usize,
     h: usize,
@@ -347,8 +313,8 @@ impl Engine<'_> {
             .filter(|k| k.starts_with("window:"))
             .count();
         let _build = WINDOW_BUILD.lock().unwrap();
-        let cache = self.dir.join("cache").join("decode-windows-v1");
-        fs::create_dir_all(&cache)?;
+        let manager = crate::cache::Manager::new(self.dir);
+        let cache = manager.directory(crate::cache::Kind::Decode)?;
         // Index timestamps before choosing a byte-bounded pixel window. Input
         // seeking may decode a long GOP; those preroll frames must not consume
         // the pixel budget before we reach the requested timestamp.
@@ -362,7 +328,7 @@ impl Engine<'_> {
                     .as_u64()
                     .context("source height")? as usize,
             );
-            video_limit = (256 * 1024 * 1024 / frame_size(w, h)?).max(3);
+            video_limit = (crate::cache::SOURCE_MEMORY_BYTES / frame_size(w, h)?).max(3);
             let index_key = crate::store::hash(&json!({
                 "path":path,"fingerprint":asset["fingerprint"],"stamp":source_stamp,
                 "stream":stream["index"],"seek":seek.json()?,"until":until.json()?
@@ -444,7 +410,9 @@ impl Engine<'_> {
         let cached_meta = cache.join(format!("{cache_key}.pts"));
         let ready = cache.join(format!("{cache_key}.ready"));
         // Decode into a private staging directory, publish the marker last.
-        let staging = tempfile::tempdir_in(&cache)?;
+        let lease = manager.entry(&cached_raw)?;
+        let _cache_build = lease.build_lock()?;
+        let staging = manager.scratch()?;
         // Stable names allow old windows to be replaced instead of filling disk.
         // Stream IDs are domain identifiers, not safe FFmpeg muxer paths.
         let stem = "window";
@@ -595,9 +563,7 @@ impl Engine<'_> {
                 String::from_utf8_lossy(&result.stderr)
             );
             self.progress.check_cancelled()?;
-            fs::rename(&raw_path, &cached_raw)?;
-            fs::rename(&meta_path, &cached_meta)?;
-            fs::write(&ready, b"ready")?;
+            lease.publish_window(&raw_path, &meta_path)?;
         }
         let metadata = fs::read_to_string(&cached_meta)?;
         let mut pts = Vec::new();
@@ -678,7 +644,9 @@ impl Engine<'_> {
                 .iter()
                 .map(|(_, s)| s.file.metadata().map_or(0, |m| m.len()))
                 .sum();
-            if windows.len() < 4 && held + len as u64 <= 256 * 1024 * 1024 {
+            if windows.len() < crate::cache::SOURCE_WINDOWS
+                && held + len as u64 <= crate::cache::SOURCE_MEMORY_BYTES as u64
+            {
                 break;
             }
             let Some(expired) = windows.first().map(|(key, _)| (*key).clone()) else {
@@ -686,18 +654,7 @@ impl Engine<'_> {
             };
             self.sources.remove(&expired);
         }
-        let mut leases = WINDOW_LEASES
-            .get_or_init(|| Mutex::new(HashMap::new()))
-            .lock()
-            .unwrap();
-        let lease = leases
-            .get(&cached_raw)
-            .and_then(Weak::upgrade)
-            .unwrap_or_else(|| Arc::new(()));
-        leases.retain(|_, lease| lease.strong_count() > 0);
-        leases.insert(cached_raw.clone(), Arc::downgrade(&lease));
-        drop(leases);
-        prune_windows(&cache)?;
+        lease.finish()?;
         self.sources.insert(
             key.clone(),
             Source {
@@ -974,7 +931,7 @@ impl Engine<'_> {
                         path.display()
                     );
                     let raw = crate::image_sequence::decode(&path, w, h)?;
-                    const BUDGET: usize = 64 * 1024 * 1024;
+                    const BUDGET: usize = crate::cache::IMAGE_MEMORY_BYTES;
                     while !self.image_cache.is_empty()
                         && self.image_cache.iter().map(|(_, b)| b.len()).sum::<usize>() + raw.len()
                             > BUDGET
@@ -1110,20 +1067,24 @@ impl Engine<'_> {
             .map(|font| font.signature())
             .transpose()?;
         let text_cache = if self.interactive {
-            let directory = self.dir.join("cache").join("interactive-text-v2");
-            fs::create_dir_all(&directory)?;
+            let manager = crate::cache::Manager::new(self.dir);
+            let directory = manager.directory(crate::cache::Kind::Text)?;
             let font = style["fontAssetId"]
                 .as_str()
                 .map(|id| &self.project["assets"][id]);
             let hash = crate::store::hash(
                 &json!({"style":style,"content":content,"font":font,"resolvedFont":font_signature,"width":w,"height":h,"scale":scale,"version":env!("CARGO_PKG_VERSION")}),
             )?;
-            Some(directory.join(format!("{hash}.rgba")))
+            Some(manager.entry(&directory.join(format!("{hash}.rgba")))?)
         } else {
             None
         };
-        if let Some(path) = text_cache.as_ref().filter(|path| path.is_file()) {
-            let raw = fs::read(path)?;
+        let _text_build = text_cache
+            .as_ref()
+            .map(|entry| entry.build_lock())
+            .transpose()?;
+        if let Some(entry) = text_cache.as_ref().filter(|entry| entry.path().is_file()) {
+            let raw = entry.read()?;
             ensure!(raw.len() == frame_size(w, h)?, "TEXT_CACHE_INVALID");
             return Ok(raw);
         }
@@ -1181,11 +1142,8 @@ impl Engine<'_> {
             end: Time::zero(),
         };
         let raw = Self::raw_frame(&mut s, 0)?;
-        if let Some(path) = text_cache {
-            let mut staged = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
-            staged.write_all(&raw)?;
-            staged.persist(&path).map_err(|e| e.error)?;
-            crate::preview::prune_artifacts(path.parent().unwrap(), &path)?;
+        if let Some(entry) = &text_cache {
+            entry.publish(&raw)?;
         }
         self.sources.insert(key, s);
         Ok(raw)
@@ -2009,7 +1967,21 @@ fn render_profile(
     }
     let parent = output.parent().context("output parent")?;
     fs::create_dir_all(parent)?;
-    let scratch = tempfile::tempdir_in(parent)?;
+    let cached_scratch = if preview {
+        Some(crate::cache::Manager::new(dir).scratch()?)
+    } else {
+        None
+    };
+    let output_scratch = if preview {
+        None
+    } else {
+        Some(tempfile::tempdir_in(parent)?)
+    };
+    let scratch_path = cached_scratch
+        .as_ref()
+        .map(|s| s.path())
+        .or_else(|| output_scratch.as_ref().map(|s| s.path()))
+        .unwrap();
     let mut text_scales = HashMap::new();
     if preview {
         for seq in project["sequences"].as_object().unwrap().values() {
@@ -2030,13 +2002,13 @@ fn render_profile(
         scale: None,
         text_scales,
         dir,
-        scratch: scratch.path(),
+        scratch: scratch_path,
         sources: HashMap::new(),
         image_cache: VecDeque::new(),
         interactive: false,
         native: HashMap::new(),
     };
-    let video = scratch.path().join("video.rgba");
+    let video = scratch_path.join("video.rgba");
     let mut writer = BufWriter::new(File::create(&video)?);
     progress.start("video", Some(frames as u64), "frames");
     for n in 0..frames {
@@ -2048,7 +2020,7 @@ fn render_profile(
     }
     writer.flush()?;
     drop(writer);
-    let audio = scratch.path().join("audio.f32");
+    let audio = scratch_path.join("audio.f32");
     let mut writer = BufWriter::new(File::create(&audio)?);
     let samples = duration.mul(&Time::integer(rate)).ceil_i64()?;
     let has_audio = project["sequences"].as_object().unwrap().values().any(|s| {
@@ -2075,7 +2047,7 @@ fn render_profile(
     }
     writer.flush()?;
     drop(writer);
-    let rendered = scratch.path().join("render.mp4");
+    let rendered = scratch_path.join("render.mp4");
     progress.ffmpeg(Command::new("ffmpeg").args(["-nostdin","-v","error","-y","-threads","2","-f","rawvideo","-pixel_format","rgba64le","-video_size",&format!("{w}x{h}"),"-framerate",&fps.expression(),"-i"]).arg(video).args(["-f","f32le","-ar",&rate.to_string(),"-ac",&channels.to_string(),"-i"]).arg(audio).args(["-filter_threads","2","-vf","scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=range=limited:colorspace=bt709:color_primaries=bt709:color_trc=bt709","-c:v","libx264","-threads","2","-preset",if preview{"ultrafast"}else{"fast"},"-crf",if preview{"28"}else{"18"},"-c:a","aac","-movflags","+faststart"]).arg(&rendered), "encode", Some(frames as u64))?;
     progress.start("finalize", None, "files");
     progress.check_cancelled()?;
