@@ -1893,6 +1893,7 @@ async fn events(State(state): State<Shared>) -> impl IntoResponse {
     let stream = changes
         .merge(stopping)
         .take_while(|event| event["type"] != "server.closing")
+        .chain(tokio_stream::once(json!({"type":"server.closing"})))
         .map(|event| {
             Ok::<_, std::convert::Infallible>(
                 Event::default().event("change").data(event.to_string()),

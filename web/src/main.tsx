@@ -9,7 +9,7 @@ import {
   requestId,
 } from "./api";
 import * as t from "./time";
-import { appendAsset, trimCommand } from "./commands";
+import { appendAsset, trimCommand, opacityCommand } from "./commands";
 import { Player } from "./Player";
 import { Icon, type IconName } from "./Icons";
 import { Modal } from "./Modal";
@@ -156,6 +156,7 @@ function App() {
         setNotice("This project was closed from another client.");
       }
       if (data.type === "server.closing") {
+        setPlaying(false);
         setConnected(false);
         setReady(false);
         setSnapshot(null);
@@ -1231,9 +1232,7 @@ function Inspector({
     [name, setName] = useState(item.name ?? ""),
     [target, setTarget] = useState(track.id),
     [opacity, setOpacity] = useState(
-      !!item.visual?.opacity?.$animation
-        ? ""
-        : String(item.visual?.opacity ?? 1),
+      !!item.video?.opacity?.$animation ? "" : String(item.video?.opacity ?? 1),
     );
   const attempt = (f: () => any) => {
     try {
@@ -1334,22 +1333,7 @@ function Inspector({
           className="stack-form"
           onSubmit={(e) => {
             e.preventDefault();
-            attempt(() => {
-              const value = Number(opacity);
-              if (
-                opacity.trim() === "" ||
-                !Number.isFinite(value) ||
-                value < 0 ||
-                value > 1
-              )
-                throw new Error("Opacity must be between 0 and 1.");
-              return {
-                type: "item.put",
-                sequenceId,
-                trackId: track.id,
-                item: { ...item, visual: { ...item.visual, opacity: value } },
-              };
-            });
+            attempt(() => opacityCommand(sequenceId, track.id, item, opacity));
           }}
         >
           <label>
@@ -1361,7 +1345,7 @@ function Inspector({
               step="0.01"
               value={opacity}
               placeholder="Animated"
-              disabled={!!item.visual?.opacity?.$animation}
+              disabled={!!item.video?.opacity?.$animation}
               onChange={(e) => setOpacity(e.target.value)}
             />
           </label>

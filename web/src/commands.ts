@@ -1,5 +1,5 @@
-import { entityId } from "./api";
-import * as t from "./time";
+import { entityId } from "./api.ts";
+import * as t from "./time.ts";
 export function trimCommand(
   sequenceId: string,
   item: any,
@@ -110,4 +110,28 @@ export function appendAsset(
     });
   }
   return { type: "batch", commands };
+}
+
+export function opacityCommand(
+  sequenceId: string,
+  trackId: string,
+  item: any,
+  input: string,
+) {
+  const opacity = Number(input);
+  if (
+    input.trim() === "" ||
+    !Number.isFinite(opacity) ||
+    opacity < 0 ||
+    opacity > 1
+  )
+    throw new Error("Opacity must be between 0 and 1.");
+  if (item.video?.opacity?.$animation)
+    throw new Error("Edit animated opacity through its animation curve.");
+  return {
+    type: "item.put",
+    sequenceId,
+    trackId,
+    item: { ...item, video: { ...item.video, opacity } },
+  };
 }

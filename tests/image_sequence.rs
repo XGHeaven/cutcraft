@@ -692,3 +692,35 @@ fn transparent_png_and_multiframe_container_guards() {
         assert_eq!(store.project().unwrap(), before);
     }
 }
+
+#[test]
+fn thumbnails_use_the_frozen_image_sequence_manifest() {
+    if !available() {
+        return;
+    }
+    let (_tmp, root, dir) = setup();
+    let store = Store::open(&dir).unwrap();
+    let mut import = options(&root);
+    import.managed = false;
+    let result = seq::import(&store, &import, false).unwrap();
+    let p = store.project().unwrap();
+    let before = fs::read(dir.join("cutcraft.json")).unwrap();
+    let history = fs::read(dir.join("history.jsonl")).unwrap();
+    // A newly discovered earlier frame must not change the frozen first frame.
+    bmp(&root.join("frame_1000.bmp"), [0, 0, 255], 32, 18);
+    let thumb = cutcraft::preview::thumbnail(
+        &p,
+        &dir,
+        result["assetId"].as_str().unwrap(),
+        "stream_v0",
+        &cutcraft::progress::Progress::default(),
+    )
+    .unwrap();
+    let output = dir.join("thumbnail.png");
+    fs::write(&output, thumb.bytes).unwrap();
+    for pixel in colors(&output) {
+        expect_color(pixel, 0);
+    }
+    assert_eq!(fs::read(dir.join("cutcraft.json")).unwrap(), before);
+    assert_eq!(fs::read(dir.join("history.jsonl")).unwrap(), history);
+}

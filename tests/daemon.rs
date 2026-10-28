@@ -273,9 +273,11 @@ fn last_close_finishes_existing_and_late_event_streams() {
         .bearer_auth(record["token"].as_str().unwrap())
         .send()
     {
-        late.text().unwrap();
+        let body = late.text().unwrap();
+        assert_eq!(body.matches("server.closing").count(), 1, "{body}");
     }
-    existing.text().unwrap();
+    let body = existing.text().unwrap();
+    assert_eq!(body.matches("server.closing").count(), 1, "{body}");
     let deadline = Instant::now() + Duration::from_secs(3);
     while host.runtime.join("host.json").exists() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(20));

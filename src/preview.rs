@@ -98,7 +98,7 @@ fn validate(project: &Value, dir: &Path, progress: &Progress) -> Result<()> {
 }
 fn frame_key(project: &Value, sid: &str, at: &Time, scale: Option<f64>) -> Result<String> {
     crate::store::hash(
-        &json!({"project":project,"sequenceId":sid,"at":at.json()?,"scale":scale,"profile":"interactive-v2","renderer":env!("CARGO_PKG_VERSION")}),
+        &json!({"project":project,"sequenceId":sid,"at":at.json()?,"scale":scale,"profile":"interactive-v3","renderer":env!("CARGO_PKG_VERSION")}),
     )
 }
 fn publish(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -268,7 +268,7 @@ pub fn export(
     let cache = dir.join("cache").join("preview-ranges-v1");
     fs::create_dir_all(&cache)?;
     let key = crate::store::hash(
-        &json!({"project":project,"sequenceId":sid,"start":start.json()?,"duration":duration.json()?,"scale":options.scale,"profile":"preview-range-v1","renderer":env!("CARGO_PKG_VERSION")}),
+        &json!({"project":project,"sequenceId":sid,"start":start.json()?,"duration":duration.json()?,"scale":options.scale,"profile":"preview-range-v2","renderer":env!("CARGO_PKG_VERSION")}),
     )?;
     let output = cache.join(format!("{key}.mp4"));
     let scratch = tempfile::tempdir_in(&cache)?;
@@ -577,7 +577,7 @@ pub fn thumbnail(
     fs::create_dir_all(&cache)?;
     let root = text(&project["rootSequenceId"]);
     let thumb_key = crate::store::hash(
-        &json!({"asset":asset,"streamId":stream_id,"format":project["sequences"][root]["format"],"profile":"thumbnail-v1"}),
+        &json!({"asset":asset,"streamId":stream_id,"format":project["sequences"][root]["format"],"profile":"thumbnail-v2"}),
     )?;
     let thumbnail_path = cache.join(format!("thumbnail-{thumb_key}.png"));
     let (width, height) = crate::frame_render::dimensions(
@@ -598,7 +598,10 @@ pub fn thumbnail(
     let mut p = project.clone();
     let sid = text(&p["rootSequenceId"]).to_owned();
     let mut item = json!({"id":crate::id("item"),"type":"media","assetId":asset_id,"streamId":stream_id,"timelineRange":{"start":{"num":0,"den":1},"duration":{"num":1,"den":1}}});
-    if stream["kind"] == "video" {
+    if crate::image_sequence::is_sequence(asset) {
+        let duration = Time::from_json(&stream["duration"])?.min(Time::integer(1));
+        item["sourceRange"] = crate::time::range(&Time::zero(), &duration)?;
+    } else if stream["kind"] == "video" {
         let native = crate::media::probe(&crate::media::local_path(dir, text(&asset["uri"]))?)?;
         let starts = array(&native["streams"])
             .iter()

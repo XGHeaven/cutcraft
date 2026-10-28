@@ -20,6 +20,7 @@ use std::{
 };
 static WINDOW_BUILD: Mutex<()> = Mutex::new(());
 static WINDOW_LEASES: OnceLock<Mutex<HashMap<PathBuf, Weak<()>>>> = OnceLock::new();
+static VIDEO_WINDOW_INDEX: OnceLock<Mutex<HashMap<String, Vec<Time>>>> = OnceLock::new();
 static NATIVE_CACHE: OnceLock<Mutex<HashMap<String, Value>>> = OnceLock::new();
 fn prune_windows(cache: &Path) -> Result<()> {
     let mut files = fs::read_dir(cache)?
@@ -348,8 +349,96 @@ impl Engine<'_> {
         let _build = WINDOW_BUILD.lock().unwrap();
         let cache = self.dir.join("cache").join("decode-windows-v1");
         fs::create_dir_all(&cache)?;
+        // Index timestamps before choosing a byte-bounded pixel window. Input
+        // seeking may decode a long GOP; those preroll frames must not consume
+        // the pixel budget before we reach the requested timestamp.
+        let mut output_start = seek.clone();
+        let mut video_limit = 0usize;
+        let mut indexed_last = None;
+        if !audio {
+            let (w, h) = self.dimensions(
+                stream["video"]["width"].as_u64().context("source width")? as usize,
+                stream["video"]["height"]
+                    .as_u64()
+                    .context("source height")? as usize,
+            );
+            video_limit = (256 * 1024 * 1024 / frame_size(w, h)?).max(3);
+            let index_key = crate::store::hash(&json!({
+                "path":path,"fingerprint":asset["fingerprint"],"stamp":source_stamp,
+                "stream":stream["index"],"seek":seek.json()?,"until":until.json()?
+            }))?;
+            let cached_index = VIDEO_WINDOW_INDEX
+                .get_or_init(|| Mutex::new(HashMap::new()))
+                .lock()
+                .unwrap()
+                .get(&index_key)
+                .cloned();
+            let timestamps = if let Some(index) = cached_index {
+                index
+            } else {
+                let result = self.progress.output(
+                    Command::new("ffprobe")
+                        .args([
+                            "-v",
+                            "error",
+                            "-threads",
+                            "2",
+                            "-select_streams",
+                            &stream["index"].to_string(),
+                            "-read_intervals",
+                            &format!("{}%{}", anim::float(&seek)?, anim::float(&until)?),
+                            "-show_frames",
+                            "-show_entries",
+                            "frame=best_effort_timestamp",
+                            "-of",
+                            "json",
+                        ])
+                        .arg(&path),
+                )?;
+                ensure!(
+                    result.status.success(),
+                    "MEDIA_PROCESS_FAILED: {}",
+                    String::from_utf8_lossy(&result.stderr)
+                );
+                let index: Value = serde_json::from_slice(&result.stdout)?;
+                let timestamps = array(&index["frames"])
+                    .iter()
+                    .map(|frame| {
+                        Ok(Time::integer(
+                            frame["best_effort_timestamp"]
+                                .as_i64()
+                                .context("SOURCE_INDEX_INVALID: missing timestamp")?,
+                        )
+                        .mul(&base))
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .into_iter()
+                    .filter(|pts| pts < &until)
+                    .collect::<Vec<_>>();
+                ensure!(
+                    !timestamps.is_empty() && timestamps.windows(2).all(|pair| pair[0] < pair[1]),
+                    "SOURCE_INDEX_INVALID: empty or nonincreasing window timestamps"
+                );
+                let mut cache = VIDEO_WINDOW_INDEX.get().unwrap().lock().unwrap();
+                if cache.len() >= 64 {
+                    cache.clear();
+                }
+                cache.insert(index_key, timestamps.clone());
+                timestamps
+            };
+            let target = at.add(&origin);
+            let selected = timestamps
+                .partition_point(|pts| pts <= &target)
+                .saturating_sub(1);
+            // Keep a predecessor for exclusive-upper sampling, plus a successor
+            // for frame blending. Further frames amortize sequential playback.
+            let stride = video_limit - 2;
+            let first = (selected / stride * stride).saturating_sub(1);
+            output_start = timestamps[first].clone();
+            indexed_last = timestamps.last().cloned();
+        }
         let cache_key = crate::store::hash(
-            &json!({"path":path,"fingerprint":asset["fingerprint"],"sourceStamp":source_stamp,"stream":stream,"at":bucket.json()?,"audio":audio,"rate":rate,"channels":channels,"scale":if audio {None} else {self.scale},"decoder":"window-v3","renderer":env!("CARGO_PKG_VERSION")}),
+            &json!({"path":path,"fingerprint":asset["fingerprint"],"sourceStamp":source_stamp,"stream":stream,"at":bucket.json()?,"outputStart":output_start.json()?,"audio":audio,"rate":rate,"channels":channels,"scale":if audio {None} else {self.scale},"decoder":"window-v4","renderer":env!("CARGO_PKG_VERSION")}),
         )?;
         let cached_raw = cache.join(format!("{cache_key}.raw"));
         let cached_meta = cache.join(format!("{cache_key}.pts"));
@@ -456,12 +545,12 @@ impl Engine<'_> {
                 .any(|p| text(&ns["pix_fmt"]).starts_with(p));
             let filter = if rgb {
                 format!(
-                    "trim=start={}:end={},scale={w}:{h}:flags=fast_bilinear,format=rgba64le",
-                    anim::float(&seek)?,
-                    anim::float(&until)?
+                    "trim=start_pts={}:end_pts={},scale={w}:{h}:flags=fast_bilinear,format=rgba64le",
+                    output_start.div(&base)?.ceil_i64()?,
+                    until.div(&base)?.ceil_i64()?
                 )
             } else {
-                format!("trim=start={}:end={},scale={w}:{h}:flags=fast_bilinear:in_color_matrix=bt709:out_range=full,format=rgba64le",anim::float(&seek)?,anim::float(&until)?)
+                format!("trim=start_pts={}:end_pts={},scale={w}:{h}:flags=fast_bilinear:in_color_matrix=bt709:out_range=full,format=rgba64le",output_start.div(&base)?.ceil_i64()?,until.div(&base)?.ceil_i64()?)
             };
             cmd.args([
                 "-an",
@@ -472,7 +561,7 @@ impl Engine<'_> {
                 "-enc_time_base",
                 &base.expression(),
                 "-frames:v",
-                &(256 * 1024 * 1024 / frame_size(w, h)?).max(2).to_string(),
+                &video_limit.to_string(),
                 "-c:v",
                 "rawvideo",
                 "-pix_fmt",
@@ -558,7 +647,10 @@ impl Engine<'_> {
             0
         };
         if !audio {
-            let full_tail = until >= native_start.add(&duration) && len < 256 * 1024 * 1024;
+            let full_tail = until >= native_start.add(&duration)
+                && indexed_last
+                    .as_ref()
+                    .is_some_and(|last| pts.last().unwrap().add(&origin) >= *last);
             ensure!(
                 at >= &start && (at <= pts.last().unwrap() || full_tail),
                 "PREVIEW_DECODE_WINDOW_LIMIT: source requires a smaller decode window"

@@ -284,3 +284,125 @@ fn continuous_preview_scale_changes_pixels_and_cache_without_editing_project() {
         .contains("INVALID_PREVIEW_SCALE"));
     }
 }
+
+#[test]
+fn full_resolution_windows_include_the_target_and_do_not_fake_the_tail() {
+    if !available() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("hd.mp4");
+    let output = Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=red:s=1920x1080:r=30:d=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=blue:s=1920x1080:r=30:d=3",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=lime:s=1920x1080:r=30:d=1",
+            "-filter_complex",
+            "[0:v][1:v][2:v]concat=n=3:v=1:a=0,scale=in_color_matrix=bt601:out_color_matrix=bt709[v]",
+            "-map",
+            "[v]",
+            "-c:v",
+            "libx264",
+            "-threads",
+            "2",
+            "-preset",
+            "ultrafast",
+            "-g",
+            "150",
+            "-bf",
+            "2",
+        ])
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let (mut p, sid) = fixture();
+    p["sequences"][&sid]["format"]["width"] = json!(1920);
+    p["sequences"][&sid]["format"]["height"] = json!(1080);
+    p["sequences"][&sid]["format"]["frameRate"] = Time::integer(30).json().unwrap();
+    let aid = id("asset");
+    p["assets"][&aid] = cutcraft::media::asset(&source, "hd.mp4", false).unwrap();
+    p["assets"][&aid]["streams"][0]["video"]["colorSpace"] = json!("rec709");
+    p["sequences"][&sid]["tracks"][0]["items"] = json!([{
+        "id":id("item"),"type":"media","assetId":aid,"streamId":"stream_v0",
+        "timelineRange":cutcraft::time::range(&Time::zero(), &Time::integer(5)).unwrap(),
+        "sourceRange":cutcraft::time::range(&Time::zero(), &Time::integer(5)).unwrap()
+    }]);
+    let original = p.clone();
+    for (num, den, mode, channel) in [
+        (29, 30, "plain", 0),
+        (1, 1, "plain", 2),
+        (7, 5, "plain", 2),
+        (24, 5, "plain", 1),
+        (4, 1, "reverse", 0),
+        (59, 60, "blend", 3),
+    ] {
+        let mut sample = p.clone();
+        if mode == "reverse" {
+            sample["sequences"][&sid]["tracks"][0]["items"][0]["playback"] =
+                json!({"mode":"fit","reverse":true});
+        } else if mode == "blend" {
+            sample["sequences"][&sid]["tracks"][0]["items"][0]["playback"] =
+                json!({"mode":"fit","videoSampling":{"method":"frame-blend"}});
+        }
+        let frame = preview::frame_scaled(
+            &sample,
+            dir.path(),
+            &sid,
+            &Time::new(num, den).unwrap(),
+            &Progress::default(),
+            Some(1.),
+        )
+        .unwrap();
+        assert_eq!(frame.metadata["width"], 1920);
+        let png = dir.path().join("frame.png");
+        fs::write(&png, frame.bytes).unwrap();
+        let pixels = Command::new("ffmpeg")
+            .args(["-v", "error", "-i"])
+            .arg(&png)
+            .args([
+                "-vf",
+                "scale=1:1",
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ])
+            .output()
+            .unwrap();
+        assert!(pixels.status.success());
+        let rgb = &pixels.stdout;
+        assert_eq!(rgb.len(), 3);
+        assert!(
+            if channel == 3 {
+                rgb[0] > 160 && rgb[0] < 220 && rgb[2] > 160 && rgb[2] < 220 && rgb[1] < 20
+            } else {
+                rgb[channel] > 230 && rgb[(channel + 1) % 3] < 20 && rgb[(channel + 2) % 3] < 20
+            },
+            "{mode} {num}/{den}: {rgb:?}"
+        );
+    }
+    assert_eq!(p, original);
+    for entry in fs::read_dir(dir.path().join("cache/decode-windows-v1")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|ext| ext == "raw") {
+            assert!(fs::metadata(path).unwrap().len() <= 256 * 1024 * 1024);
+        }
+    }
+}
