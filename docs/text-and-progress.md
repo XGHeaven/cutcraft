@@ -4,7 +4,7 @@
 
 `item text` 在视频轨创建 `builtin.text`，`item caption` 在字幕轨创建 caption。
 两者均支持：`--text` 或 `--text-file`、`--font-asset`、`--font-size`、`--color`、
-`--align left|center|right`、`--position top|center|bottom`、`--start`、`--duration`、`--sequence`。
+`--font-family`、`--align left|center|right`、`--position top|center|bottom`、`--start`、`--duration`、`--sequence`。
 颜色使用 `#RRGGBB` 或 `#RRGGBBAA`，数值保存为协议的 RGBA 对象。
 
 ```sh
@@ -18,14 +18,36 @@ cutcraft -p demo.cut item caption --track SUBTITLE_TRACK_ID --start 1 --duration
 `--font-asset` 使用已注册的 `kind=font` 素材，缺少引用会被校验拒绝。字体文件可通过
 `asset.put` 注册；普通媒体 `import` 不是字体导入命令。未指定字体时使用系统字体，跨机器不保证一致。
 位置是预设锚点，对齐决定整个文字块的位置；更细的偏移/缩放可使用 Item 的 video.transform。
-本轮没有引入新协议字段或改变项目版本。
+
+直接使用系统苹方（macOS）：
+
+```sh
+cutcraft -p demo.cut item text --track VIDEO_TRACK_ID --start 0 --duration 3 \
+  --text '中文录屏' --font-family 'PingFang SC' --font-size 48 --position center
+```
+
+`item caption` 使用相同参数。`--font-family` 与 `--font-asset` 互斥；前者保存系统字体族名，
+也接受具体字体面的 PostScript 名，例如 `PingFangSC-Semibold`。字体族名选择最接近常规、
+直立、正常宽度的字体面。支持字体自带的本地化族名，例如 `苹方-简`；不接受 CSS 字体列表。
+系统字体扫描覆盖 macOS 的动态字体目录，不假定苹方位于 `/System/Library/Fonts/PingFang.ttc`。
+TTC 按解析到的字体面渲染，私有临时副本保留全部字体表，原始字体文件不修改。
+
+字体选择由 Cutcraft 完成，不依赖 FFmpeg 的 Fontconfig 配置。显式字体找不到时报
+`FONT_NOT_FOUND`，格式损坏时报 `FONT_INVALID`，缺字时报 `FONT_GLYPH_MISSING` 并列出 Unicode 码点；
+不会静默回退到其他字体。未指定字体仍使用后端默认字体，不保证中文覆盖。
+系统字体清单按进程缓存；安装新字体后，重新运行 CLI，或关闭所有项目后重新打开本机编辑器。
+
+工程中的 `fontAssetId` 优先于 `fontFamily`，字体素材仍使用第 0 个字体面，保持已有工程语义；
+需要跨机器一致输出时使用已选定字体面的字体素材。字体名不自动打包字体文件。
+预览缓存包含解析到的字体文件、字体面及文件状态，避免字体更新后沿用旧画面。
+公开 0.1.0 与内部 0.3/0.4/0.5 均支持；工程协议版本不变，规范修订见 [修订记录](../spec/REVISIONS.md)。
 
 渲染先生成白色字形覆盖率，再赋予 straight RGB 和用户设置的 alpha，确保未绘字区域透明，
 避免 FFmpeg 在透明画布上混合半透明字体时重复计算 alpha。相同修复覆盖参考渲染器和旧版
 需要 CPU 效果处理的文字路径。预览、嵌套和半透明文字均有像素级回归测试。
 
 当前支持基础排版，不支持自动换行、文本框宽高、行距配置、富文本或逐字动画。
-原协议中的 fontFamily、backgroundColor、maxLines 仍未提供渲染实现；不要把 PNG+SRT
+backgroundColor、maxLines 仍未提供渲染实现；不要把 PNG+SRT
 当作工程内可编辑文字。复杂外部排版可以继续使用图片素材。
 
 ## 进度

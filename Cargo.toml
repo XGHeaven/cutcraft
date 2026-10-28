@@ -13,6 +13,7 @@ axum = { version = "0.8", default-features = false, features = ["json", "query",
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4.5", features = ["derive"] }
 fs2 = "0.4"
+fontdb = "0.23"
 jsonschema = { version = "0.29", default-features = false }
 num-bigint = "0.4"
 num-rational = "0.4"
@@ -24,6 +25,7 @@ sha2 = "0.10"
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+ttf-parser = "0.25"
 url = "2"
 uuid = { version = "1", features = ["v7"] }
 

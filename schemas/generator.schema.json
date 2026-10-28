@@ -33,6 +33,7 @@
             "properties": {
               "text": {"type": "string", "minLength": 1},
               "fontAssetId": {"$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/assetId"},
+              "fontFamily": {"type": "string", "minLength": 1, "maxLength": 200},
               "fontSizePixels": {"type": "number", "exclusiveMinimum": 0, "maximum": 4096},
               "color": {"$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"},
               "align": {"enum": ["left", "center", "right"]},

@@ -108,13 +108,15 @@ Tracks mix without automatic normalization or loudness mastering. Check the resu
 
 ## Text, images and backgrounds
 
+For a blurred backdrop, reuse visual media on a lower video track, scale it to cover the canvas, and blur only that item while keeping the foreground sharp. Follow the [blurred-background recipe](motion-and-effects.md#模糊背景最佳实践) for track order, exact source-time synchronization and avoiding duplicate audio.
+
 ```sh
 cutcraft -p PROJECT track add --kind subtitle --name 'Captions'
 cutcraft -p PROJECT item caption --track SUBTITLE_TRACK_ID --start 1 --duration 2 --text 'Arriving in Yunnan'
 cutcraft -p PROJECT item color --track VIDEO_TRACK_ID --start 0 --duration 3 --color '#203040'
 ```
 
-Both `item caption` and `item text` accept `--text` or `--text-file` (UTF-8 with explicit newlines), `--font-asset`, `--font-size`, `--color '#RRGGBBAA'`, `--align` and `--position`. Use `item text` on a video track for editable titles; use `item caption` on a subtitle track. File text is stored directly in the project, not linked. Automatic wrapping, text boxes and rich text are not implemented.
+Both `item caption` and `item text` accept `--text` or `--text-file` (UTF-8 with explicit newlines), `--font-asset` or `--font-family` (mutually exclusive), `--font-size`, `--color '#RRGGBBAA'`, `--align` and `--position`. Use `item text` on a video track for editable titles; use `item caption` on a subtitle track. File text is stored directly in the project, not linked. Use `--font-family 'PingFang SC'` for installed macOS Chinese fonts, or an exact PostScript face name such as `PingFangSC-Semibold`. Cutcraft discovers system fonts and selects the correct TTC face. Unknown names and missing glyphs fail explicitly; never silently substitute another font. Pinned `fontAssetId` takes precedence and still uses face zero. System fonts are not bundled, and installing new fonts requires a fresh CLI process or editor-service restart. Automatic wrapping, text boxes and rich text are not implemented.
 
 Caption items carry text and timelineRange. Customize the full item's style with supported fontSizePixels, color, align (left/center/right), position (top/center/bottom), and fontAssetId. Color uses numeric RGBA in [0,1]. Caption rendering burns text into the video; this is not automatic transcription, translation, speech alignment, or an SRT import/export facility. Word timing metadata can be stored, but does not imply animated karaoke rendering.
 
@@ -135,7 +137,7 @@ For a title on a video track, use an item.put containing a generator item with t
 }
 ```
 
-Text generators support video transforms/effects/animation. The fallback system font depends on the machine; fontAssetId points to a registered font asset for repeatability. Normal media import does not register font files: use asset.put with kind=font, a resolvable URI and streams=[] after inspecting the asset schema. The renderer rejects fontFamily lookup, backgroundColor and maxLines style features; do not assume every stored caption style has a rendering implementation.
+Text generators support video transforms/effects/animation. The fallback system font depends on the machine; fontAssetId points to a registered font asset for repeatability. Normal media import does not register font files: use asset.put with kind=font, a resolvable URI and streams=[] after inspecting the asset schema. Explicit fontFamily lookup is supported as described above; the renderer rejects backgroundColor and maxLines style features. Do not assume every stored caption style has a rendering implementation.
 
 Images are media items on video tracks with timelineRange but no sourceRange. Use item transform for position, anchor, scale, crop and rotation; animate those properties for a moving still. Position/anchor are normalized, scale is multiplicative, crop edges are fractions, and rotation is degrees. Negative scales mirror; zero scale hides the geometry. A transparent PNG can overlay lower tracks. Select an appropriate supported color declaration for the image.
 
@@ -191,7 +193,7 @@ cutcraft -p PROJECT render --sequence SEQUENCE_ID --output output/final.mp4 --pr
 
 Schema checks shapes/types; semantic checks IDs, references, times, overlap, links and animations; media checks local files, fingerprints, streams, source bounds and relevant backend availability. Runtime sampled constraints may still reject a render, so media validation alone does not establish a successful export.
 
-`sample` reports active items, evaluated properties, exact source positions and transition roles/progress without decoding images. `preview` exports only a low-resolution MP4 under project-root `cache/`, returning its path in `video` and `output`. It caps the long edge at 640 pixels and frame rate at 24 fps, with fast encoding; smaller dimensions and lower frame rates are retained. It renders the entire selected sequence at a fixed revision without changing the project or final export format. Re-run it after edits. For interactive PNG frames and browser playback use `open`; the offline `preview` command keeps its MP4 output contract.
+`sample` reports active items, evaluated properties, exact source positions and transition roles/progress without decoding images. No-option `preview` exports a full low-resolution MP4 under project-root `cache/`, with a 640-pixel long edge and at most 24fps. Use `--at` for PNG, `--start/--duration` for interval MP4, `--sheet` for a thumbnail overview, or `--boundaries` for paired frames around cuts. All modes capture a fixed revision without changing the project. See the recipes below; use `open` for browser playback.
 
 The export is H.264/AAC MP4 with even dimensions, square pixels and Rec.709 output. There are no dedicated render flags for arbitrary codec, CRF, hardware acceleration, resolution or audio-layout selection; supported output format changes belong in the sequence, and the rest needs a different implementation. Existing destination files require --overwrite. Failures preserve the previous output, and source-file overwrite is rejected.
 
@@ -216,3 +218,22 @@ Check rendered subtitles over a visible background and inspect glyph edges. Sche
 `--at` 不能和区间参数混用；区间左闭右开，不允许超出序列。时间用有理秒，scale 为 `(0,1]`。
 新增模式支持公开 0.1.0 和内部 0.4/0.5；无选项 `preview` 保留原有整段 MP4 与旧版兼容。
 结果只对应返回的 revision，不写快照或历史，输出是可重建 cache；单帧或抽帧检查不代表完整主观试听。
+
+
+## 缩略图总览与边界帧检查
+
+```sh
+cutcraft -p PROJECT preview --sheet --count 12 --columns 4
+cutcraft -p PROJECT preview --sheet --interval 10
+cutcraft -p PROJECT preview --sheet --start 10 --duration 5
+cutcraft -p PROJECT preview --boundaries
+cutcraft -p PROJECT preview --boundaries --at 3/2
+```
+
+先用 `--sheet` 浏览整体内容，再用 `--boundaries` 检查切点。两者输出 `image` / `output` PNG，`cells` 给出每格精确 time 和图中坐标；默认缩略图最长边 320，可用 `--scale` 调整。总览默认 12 张、4 列，以 `start+i*duration/count` 在半开区间内均匀取样，不包含终点；count 最多 128，columns 最多 16。需要每 N 秒一张时用 `--interval N`，支持 `0.5` / `1/2` 等正有理秒，与 `--count` 互斥。它从 start 起按固定间隔采样，不包含区间终点；间隔大于或等于时长时只取起点，张数为 `ceil(duration/N)`。超过 128 张会拒绝，需增大间隔或缩小区间。
+
+边界模式默认按时间合并可见视频/字幕轨启用 Item 的起止点（遵守 solo），每行左 before、右 after；也可用 `--at` 只检查指定点，或用 start/duration 筛选边界（两端包含）。最多 64 个边界，超出时缩小区间。`boundaries` 提供相关 Item/轨道 ID；不递归枚举嵌套内部切点，要检查子序列时指定 `--sequence`。
+
+边界帧使用工程帧率：after 帧号为 `ceil(boundary*fps)`，before 减一，时间为帧号除以 fps。它们是实际输出帧网格上的两侧画面，不是对边界时间减浮点 epsilon。序列首尾缺少的一侧为 N/A，JSON time/frameIndex 为 null；非常短的片段可能没有输出帧。检查的是最终合成画面，包含实际转场、字幕和叠层；缩略图不能替代区间播放、试听，也不会自动证明不存在黑帧或剪辑错误。
+
+`--sheet` / `--boundaries` 互斥，count/columns/interval 仅用于 sheet；sheet 不与 at 组合，at 不与 start/duration 组合。支持公开 0.1.0 和内部 0.4/0.5；内部 0.3 不支持，不改版本绕过。输出在可重建的 `cache/preview-sheets-v1/` 中，工程、历史和媒体保持不变。

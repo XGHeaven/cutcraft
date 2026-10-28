@@ -40,7 +40,7 @@ pub fn validate_scale(scale: Option<f64>) -> Result<()> {
 }
 type Verified = (u64, Option<SystemTime>, String);
 static VERIFIED: OnceLock<Mutex<HashMap<PathBuf, Verified>>> = OnceLock::new();
-fn validate(project: &Value, dir: &Path, progress: &Progress) -> Result<()> {
+pub(crate) fn validate(project: &Value, dir: &Path, progress: &Progress) -> Result<()> {
     progress.check_cancelled()?;
     ensure!(
         crate::capabilities::supports(
@@ -96,9 +96,15 @@ fn validate(project: &Value, dir: &Path, progress: &Progress) -> Result<()> {
     }
     Ok(())
 }
-fn frame_key(project: &Value, sid: &str, at: &Time, scale: Option<f64>) -> Result<String> {
+fn frame_key(
+    project: &Value,
+    dir: &Path,
+    sid: &str,
+    at: &Time,
+    scale: Option<f64>,
+) -> Result<String> {
     crate::store::hash(
-        &json!({"project":project,"sequenceId":sid,"at":at.json()?,"scale":scale,"profile":"interactive-v3","renderer":env!("CARGO_PKG_VERSION")}),
+        &json!({"project":project,"fonts":crate::fonts::signatures(project,dir)?,"sequenceId":sid,"at":at.json()?,"scale":scale,"profile":"interactive-v4","renderer":env!("CARGO_PKG_VERSION")}),
     )
 }
 fn publish(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -152,7 +158,7 @@ pub fn frame_scaled(
     validate(project, dir, progress)?;
     let cache = dir.join("cache").join("interactive-v1");
     fs::create_dir_all(&cache)?;
-    let output = cache.join(format!("{}.png", frame_key(project, sid, at, scale)?));
+    let output = cache.join(format!("{}.png", frame_key(project, dir, sid, at, scale)?));
     let scratch = tempfile::tempdir_in(&cache)?;
     let mut engine = PreviewEngine::with_scale(project, dir, sid, scratch.path(), progress, scale)?;
     let metadata = json!({"revision":project["revision"],"sequenceId":sid,"time":at.json()?,"width":engine.width,"height":engine.height,"scale":scale,"mime":"image/png"});
@@ -247,7 +253,7 @@ pub fn export(
         let mut result = frame_scaled(project, dir, sid, at, progress, options.scale)?.metadata;
         let output = dir.join("cache/interactive-v1").join(format!(
             "{}.png",
-            frame_key(project, sid, at, options.scale)?
+            frame_key(project, dir, sid, at, options.scale)?
         ));
         result["ok"] = json!(true);
         result["output"] = json!(output);

@@ -1,6 +1,6 @@
 # Cutcraft Project Specification 0.1.0
 
-规范修订：**`0.1.0-r1`**。此标识用于引用当前规范与 Schema 集合，不写入工程；`specVersion`、`eventVersion` 和 Schema URI 保持原有含义。详见[修订记录](REVISIONS.md)。
+规范修订：**`0.1.0-r2`**。此标识用于引用当前规范与 Schema 集合，不写入工程；`specVersion`、`eventVersion` 和 Schema URI 保持原有含义。详见[修订记录](REVISIONS.md)。
 
 本文中的 **MUST**、**MUST NOT**、**SHOULD** 和 **MAY** 表示规范性要求。
 
@@ -143,6 +143,14 @@ Track 是同类型 Item 的容器。支持：
 #### CaptionItem
 
 位于 `subtitle` 轨道，保存字幕文本、样式和可选词级时间。词级时间相对于 CaptionItem 的 `timelineRange.start`，且 MUST 完全落在 CaptionItem 范围内。
+
+#### 文字字体选择
+
+CaptionItem 的 `style` 与 `builtin.text` 1.0.0 的 `parameters` 支持可选 `fontFamily`（1–200 个字符，不得全为空白）。它是单个系统字体族名或具体字体面的 PostScript 名，不是 CSS 列表或路径；族名选择常规字重、正常宽度及直立样式中最接近的字体面。字体名按字体自身提供的名称匹配，可使用其本地化名称。
+
+`fontAssetId` 优先于 `fontFamily`：指定字体素材时继续使用该文件的第 0 个字体面，不依赖系统解析；未指定素材时才解析 `fontFamily`。两者都省略时保留后端默认字体行为。系统字体解析结果、TTC 字体面索引和临时文件不写入工程；跨机器复现应使用字体素材。
+
+显式指定的字体不可用、格式损坏或缺少文本所需字形时，支持该能力的后端 MUST 明确报错，不静默换成其他字体或输出缺字方框。换行、制表和 Unicode 排版控制符不作为独立可见字形检查。字体不是动画属性，不涉及时间单位。此实现补齐已有字幕字段，并兼容扩展共享 `builtin.text` 参数 Schema；公开 0.1.0 及内部 0.3/0.4/0.5 使用相同选择规则，工程和组件版本不变，归档 Schema 不修改。
 
 #### AdjustmentItem
 

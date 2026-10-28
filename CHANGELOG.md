@@ -4,6 +4,10 @@ CLI 与项目协议分别管理版本；升级 CLI 不会自动升级已有项�
 
 ## Unreleased
 
+- 缩略图总览支持 `--interval N` 按固定秒数抽帧，接受有理秒，与 `--count` 互斥，超过 128 张明确拒绝。
+- 增加 `preview --sheet` 缩略图总览和 `preview --boundaries` 边界帧检查：带精确时间标注的 PNG 网格、工程帧率采样和 JSON 定位信息，复用预览引擎且不修改工程。
+- 修复系统苹方选择：标题与字幕增加 `--font-family`，支持系统字体族及 PostScript 字体面名称，正确选择 TTC 字体面；预览、导出和媒体校验共用字体解析与缺字检测。规范修订为 `0.1.0-r2`，工程协议仍为 0.1.0。
+
 - 技能安装说明推荐 `npx skills add XGHeaven/cutcraft --skill cutcraft`，补充全局 Codex 安装示例，保留 Release 技能包的离线安装方式。
 
 - Unix 安装脚本新增 `--uninstall`，支持管道或离线卸载、自定义目录和重复执行；只删除 CLI 文件，保留工程、素材、依赖和技能。

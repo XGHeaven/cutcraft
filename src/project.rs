@@ -403,11 +403,14 @@ pub fn validate(project: &Value) -> Result<()> {
                     );
                     last = ws;
                 }
-                if let Some(font) = item["style"]["fontAssetId"].as_str() {
-                    ensure!(
-                        assets.get(font).is_some_and(|a| a["kind"] == "font"),
-                        "missing font asset"
-                    );
+                if let Some(style) = crate::fonts::style(item) {
+                    crate::fonts::validate_style(style)?;
+                    if let Some(font) = style["fontAssetId"].as_str() {
+                        ensure!(
+                            assets.get(font).is_some_and(|a| a["kind"] == "font"),
+                            "missing font asset"
+                        );
+                    }
                 }
             }
         }

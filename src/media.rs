@@ -383,5 +383,6 @@ pub fn validate(project: &Value, dir: &Path) -> Result<Value> {
         }
         checked.push(json!({"assetId":aid,"path":path,"status":"ok"}));
     }
+    crate::fonts::validate(project, dir)?;
     Ok(json!({"ok":true,"level":"media","assets":checked}))
 }

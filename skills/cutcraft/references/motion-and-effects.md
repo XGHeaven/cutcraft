@@ -34,6 +34,38 @@ Registered properties are `video.opacity`, `video.transform.position/anchor/scal
 
 Item/effect animations follow item-local output time. A parent's reverse playback changes the sampled child sequence time, not the parent's own position/rotation clock.
 
+## 录屏区域放大最佳实践
+
+录屏中的局部放大、平移和恢复全景，组合现有 `item transform` 与属性动画完成，作为剪辑最佳实践使用，无需专用内置功能。直接变换录屏的视觉 Item，保持素材、时间映射和音频不变。
+
+- **固定区域放大**：将目标区域中心设为 `anchor`，用 `position` 决定它在画布中的位置，再等比增大 scale。anchor 是裁剪后源矩形的归一化坐标，position 是画布归一化坐标；scale 相对 contain 尺寸。先检查已有 crop、旋转和动画，再确定参数。
+- **动态聚焦**：使用上文的 owner 时钟属性动画，同时调整 `video.transform.scale` 和 `video.transform.position`，安排“全景 → 放大 → 停留/平移 → 恢复”。时间偏移相对 Item 起点，不是序列时间；两条曲线使用相同的关键时刻和缓动，停留段使用相同端点值。恢复时还原编辑前的构图。
+- **边界与清晰度**：目标靠近边缘时调整放大倍率或目标位置，避免露出透明边缘；预览整个运动区间，检查文字清晰度和构图。放大不会增加录屏本身的细节。已有模糊背景时只动画前景，背景继续铺满画布。
+
+例如，将裁剪后画面 `(0.65, 0.45)` 处放到画布中央，静态放大两倍：
+
+```sh
+cutcraft -p PROJECT item transform ITEM --anchor-x 0.65 --anchor-y 0.45 --x 0.5 --y 0.5 --scale-x 2 --scale-y 2
+```
+
+动态示例：输入和画布宽高比相同、无裁剪/旋转、anchor 始终为 `(0.5, 0.5)`、原构图为居中 scale=1 时，可用以下两条 vector2 曲线聚焦同一点。按上文 Property animation 格式分别保存为 `zoom.json` 和 `pan.json`；offset 用有理秒，Item 时长至少为 3 秒：
+
+| offset | scale | position |
+| --- | --- | --- |
+| 0/1 | `{"x":1,"y":1}` | `{"x":0.5,"y":0.5}` |
+| 1/2 | `{"x":2,"y":2}` | `{"x":0.2,"y":0.6}` |
+| 5/2 | `{"x":2,"y":2}` | `{"x":0.2,"y":0.6}` |
+| 3/1 | `{"x":1,"y":1}` | `{"x":0.5,"y":0.5}` |
+
+此示例从原居中构图开始，不要先应用上面的静态 anchor 设置；不同宽高比或已有变换需按实际 contain 尺寸重新计算位置。
+
+```sh
+cutcraft -p PROJECT item animate ITEM video.transform.scale --file zoom.json
+cutcraft -p PROJECT item animate ITEM video.transform.position --file pan.json
+```
+
+修改已有动画时保留区间外的关键帧与构图；需要同时发布多条曲线时，通过完整 `item.put` 或 batch 原子提交。手动设置聚焦点不代表自动识别鼠标、点击或跟踪目标。
+
 ## Speed and exact source mapping
 
 ```sh
@@ -108,3 +140,22 @@ Animating color-grade numeric parameters or LUT strength sets effect version 2.0
 `item effect ITEM --kind gaussian-blur --parameters '{"sigma":12}'` 添加内置模糊 1.0.0。
 `sigma` 范围 0–100，单位为变换前原始输入像素，默认 0；可用 `item animate ITEM sigma --effect EFFECT_ID --file curve.json` 绑定 owner 时钟 number 动画。
 预览自动缩放模糊尺度；效果按数组顺序执行，支持媒体、生成器、嵌套和调整层。内部 0.3/0.4/0.5 不支持此效果，不得改版本字段绕过。
+
+## 模糊背景最佳实践
+
+模糊背景通过现有图层、变换与高斯模糊组合完成，适合竖屏素材填充横屏画布、横屏录屏填充竖屏画布等场景。前景保持清晰，背景铺满画布；直接编辑工程即可，无需预先用 FFmpeg 生成一份模糊视频，也不需要专用内置命令。
+
+1. 已有独立背景画面时直接使用；需要以主体画面作背景时，在下层视频轨创建另一个视觉 Item，复用同一 Asset/Stream 或子序列。保留相同的 `timelineRange`、`sourceRange` 和 `playback`，包括倒放、定格和 timeMap，避免两层不同步。新 Item 和复制的 Effect 使用新 ID，不沿用原 `linkGroupId`。仅复制视觉 Item；嵌套序列的画面和声音也使用独立 Item，不复制对应的音频 Item。
+2. 将背景轨排在前景轨下面。轨道数组按从底到顶合成，名称不决定层级；通过 `track.reorder` 提交包含全部轨道 ID 的 `trackIds`。新增轨道、Item 和重排等关联编辑可合并为一次 batch。
+3. 背景独立设置为居中、等比铺满画布，前景保留自己的构图。Cutcraft 的 scale 相对 **contain** 尺寸，`1` 不一定铺满；未旋转时，使用裁剪及像素宽高比校正后的输入尺寸 `W × H`、画布 `Cw × Ch`，等比倍率为 `max(Cw/W, Ch/H) / min(Cw/W, Ch/H)`。背景可裁去溢出部分；不要把前景的局部放大或位置动画直接照搬到背景。
+4. 仅给背景 Item 加高斯模糊，按画面调整 sigma。前景与背景应覆盖同一时间范围；后续裁剪、变速或改顺序时同步修改两层。用单帧和区间预览检查画布边缘、切点、主体清晰度及是否重复出声。
+
+背景已放到正确轨道并完成构图后：
+
+```sh
+cutcraft -p PROJECT item effect BACKGROUND_ITEM --kind gaussian-blur --parameters '{"sigma":20}'
+cutcraft -p PROJECT preview --at 1/2
+cutcraft -p PROJECT preview --start 0 --duration 2
+```
+
+这里的 `BACKGROUND_ITEM` 是背景的实际 ID，预览时间需落在工程的有效范围内。`sigma:20` 是可调整的起点，单位仍是变换前输入像素；效果作用在背景 Item 上，避免误将前景一起模糊。公开 Spec 0.1.0 的高斯模糊支持边界见上一节。

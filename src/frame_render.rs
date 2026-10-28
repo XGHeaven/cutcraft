@@ -1085,7 +1085,7 @@ impl Engine<'_> {
         } else {
             &item["parameters"]
         };
-        for k in ["backgroundColor", "maxLines", "fontFamily"] {
+        for k in ["backgroundColor", "maxLines"] {
             ensure!(
                 style[k].is_null(),
                 "BACKEND_UNSUPPORTED: text {k}; pin fontAssetId"
@@ -1104,14 +1104,19 @@ impl Engine<'_> {
             .get(text(&item["id"]))
             .copied()
             .unwrap_or(1.);
+        let resolved_font = crate::fonts::resolve(self.project, self.dir, style)?;
+        let font_signature = resolved_font
+            .as_ref()
+            .map(|font| font.signature())
+            .transpose()?;
         let text_cache = if self.interactive {
-            let directory = self.dir.join("cache").join("interactive-text-v1");
+            let directory = self.dir.join("cache").join("interactive-text-v2");
             fs::create_dir_all(&directory)?;
             let font = style["fontAssetId"]
                 .as_str()
                 .map(|id| &self.project["assets"][id]);
             let hash = crate::store::hash(
-                &json!({"style":style,"content":content,"font":font,"width":w,"height":h,"scale":scale,"version":env!("CARGO_PKG_VERSION")}),
+                &json!({"style":style,"content":content,"font":font,"resolvedFont":font_signature,"width":w,"height":h,"scale":scale,"version":env!("CARGO_PKG_VERSION")}),
             )?;
             Some(directory.join(format!("{hash}.rgba")))
         } else {
@@ -1133,13 +1138,8 @@ impl Engine<'_> {
             "center" => "(h-th)/2".into(),
             _ => format!("h-th-{}", 40. * scale),
         };
-        let font = if let Some(id) = style["fontAssetId"].as_str() {
-            let name = format!("font{n}.ttf");
-            fs::copy(
-                media::local_path(self.dir, text(&self.project["assets"][id]["uri"]))?,
-                self.scratch.join(&name),
-            )?;
-            format!(":fontfile={name}")
+        let font = if let Some(font) = resolved_font {
+            font.prepare(self.scratch, &format!("font{n}.ttf"), content)?
         } else {
             String::new()
         };

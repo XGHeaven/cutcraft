@@ -216,10 +216,30 @@ pub enum Cmd {
         #[arg(long, value_enum, default_value = "auto")]
         progress: ProgressMode,
     },
-    /// Export a preview: full MP4, --at PNG, or --start/--duration MP4.
+    /// Export MP4/PNG previews, a thumbnail sheet, or boundary frame pairs.
     Preview {
         #[arg(long)]
         sequence: Option<String>,
+        /// Export an evenly sampled thumbnail grid with exact time labels.
+        #[arg(long, conflicts_with_all = ["boundaries", "at"])]
+        #[serde(default)]
+        sheet: bool,
+        /// Inspect frames before/after visual item edges, or one --at time.
+        #[arg(long)]
+        #[serde(default)]
+        boundaries: bool,
+        /// Number of thumbnails (1-128); defaults to 12.
+        #[arg(long, requires = "sheet")]
+        #[serde(default)]
+        count: Option<usize>,
+        /// Sample every N seconds (positive, accepts fractions); conflicts with --count.
+        #[arg(long, requires = "sheet", conflicts_with = "count")]
+        #[serde(default)]
+        interval: Option<Time>,
+        /// Grid columns (1-16); defaults to 4.
+        #[arg(long, requires = "sheet")]
+        #[serde(default)]
+        columns: Option<usize>,
         /// Exact sequence time for a single PNG frame.
         #[arg(long, conflicts_with_all = ["start", "duration"])]
         #[serde(default)]
@@ -287,8 +307,11 @@ pub struct TextItemArgs {
     /// Read UTF-8 text (including explicit newlines) into the project.
     #[arg(long)]
     text_file: Option<PathBuf>,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "font_family")]
     font_asset: Option<String>,
+    /// Installed font family (e.g. PingFang SC) or a face's PostScript name.
+    #[arg(long)]
+    font_family: Option<String>,
     #[arg(long)]
     font_size: Option<f64>,
     #[arg(long)]
@@ -309,6 +332,9 @@ impl TextItemArgs {
         let mut style = json!({});
         if let Some(font) = self.font_asset {
             style["fontAssetId"] = json!(font);
+        }
+        if let Some(font) = self.font_family {
+            style["fontFamily"] = json!(font);
         }
         if let Some(size) = self.font_size {
             style["fontSizePixels"] = json!(size);
@@ -1140,15 +1166,20 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
         Cmd::Marker{sequence:s,name,at,duration}=>store.command(json!({"type":"marker.put","sequenceId":sequence(&store.project()?,s),"marker":{"id":id("marker"),"name":name,"start":at.json()?,"duration":duration.json()?}}),override_locks,dry),
         Cmd::Sample{sequence:s,at}=>{let p=store.project()?;project::sample(&p,&sequence(&p,s),&at)},
         Cmd::Render{sequence:s,output,overwrite,progress}=>{ensure!(!dry,"--dry-run is for edit commands");let p=store.project()?;let output=if output.is_absolute(){output}else{store.dir.join(output)};let dir=store.dir.clone();drop(store);render::render_with_progress(&p,&dir,&sequence(&p,s),&output,overwrite,reporter.unwrap_or(&progress.reporter()))},
-        Cmd::Preview{sequence:s,at,start,duration,scale,progress}=>{
+        Cmd::Preview{sequence:s,at,start,duration,scale,progress,sheet,boundaries,count,columns,interval}=>{
             ensure!(!dry,"--dry-run is for edit commands");
             let p=store.project()?;let dir=store.dir.clone();drop(store);
             let local_progress = progress.reporter();
             let progress = reporter.unwrap_or(&local_progress);
-            if at.is_none() && start.is_none() && duration.is_none() && scale.is_none() {
+            let review = crate::preview_review::Options { sheet, boundaries, count, columns, interval };
+            let selection = crate::preview::ExportOptions { at, start, duration, scale };
+            review.validate(&selection)?;
+            if sheet || boundaries {
+                crate::preview_review::export(&p,&dir,&sequence(&p,s),&selection,&review,progress)
+            } else if selection.at.is_none() && selection.start.is_none() && selection.duration.is_none() && scale.is_none() {
                 render::preview_with_progress(&p,&dir,&sequence(&p,s),progress)
             } else {
-                crate::preview::export(&p,&dir,&sequence(&p,s),&crate::preview::ExportOptions{at,start,duration,scale},progress)
+                crate::preview::export(&p,&dir,&sequence(&p,s),&selection,progress)
             }
         },
         _=>unreachable!()
