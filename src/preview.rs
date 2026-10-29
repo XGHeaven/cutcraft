@@ -10,8 +10,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     fs,
-    io::{Read, Write},
-    net::TcpListener,
+    io::Read,
     path::{Path, PathBuf},
     process::Command,
     sync::{
@@ -212,6 +211,28 @@ pub fn export(
     options: &ExportOptions,
     progress: &Progress,
 ) -> Result<Value> {
+    export_with_encoding(
+        project,
+        dir,
+        sid,
+        options,
+        &crate::encoding::EncodingOptions::default(),
+        progress,
+    )
+}
+pub fn export_with_encoding(
+    project: &Value,
+    dir: &Path,
+    sid: &str,
+    options: &ExportOptions,
+    encoding: &crate::encoding::EncodingOptions,
+    progress: &Progress,
+) -> Result<Value> {
+    encoding.validate()?;
+    ensure!(
+        options.at.is_none() || encoding.is_default(),
+        "ENCODING_OPTIONS_CONFLICT: video encoding only applies to MP4 previews"
+    );
     validate_scale(options.scale)?;
     ensure!(
         options.at.is_none() || (options.start.is_none() && options.duration.is_none()),
@@ -247,75 +268,94 @@ pub fn export(
     let manager = crate::cache::Manager::new(dir);
     let cache = manager.directory(crate::cache::Kind::Ranges)?;
     let key = crate::store::hash(
-        &json!({"project":project,"sequenceId":sid,"start":start.json()?,"duration":duration.json()?,"scale":options.scale,"profile":"preview-range-v2","renderer":env!("CARGO_PKG_VERSION")}),
+        &json!({"project":project,"sequenceId":sid,"start":start.json()?,"duration":duration.json()?,"scale":options.scale,"encoding":encoding,"profile":"preview-range-v3","renderer":env!("CARGO_PKG_VERSION")}),
     )?;
     let output = cache.join(format!("{key}.mp4"));
     let entry = manager.entry(&output)?;
     let _build = entry.build_lock()?;
     let scratch = manager.scratch()?;
-    let mut engine =
+    let engine =
         PreviewEngine::with_scale(project, dir, sid, scratch.path(), progress, options.scale)?;
     let frames = duration.mul(&engine.fps).ceil_i64()?;
     let samples = duration.mul(&Time::integer(engine.rate)).ceil_i64()?;
-    let video = scratch.path().join("video.rgba");
-    let audio = scratch.path().join("audio.f32");
-    let mut writer = std::io::BufWriter::new(fs::File::create(&video)?);
-    progress.start("video", Some(frames as u64), "frames");
-    for n in 0..frames {
-        writer.write_all(&engine.video(&start.add(&Time::integer(n).div(&engine.fps)?), false)?)?;
-        progress.advance_phase("video", Some(frames as u64), "frames", (n + 1) as u64);
-    }
-    writer.flush()?;
-    drop(writer);
-    let mut writer = std::io::BufWriter::new(fs::File::create(&audio)?);
-    progress.start("audio", Some(samples as u64), "samples");
-    for n in (0..samples).step_by(4096) {
-        let count = (samples - n).min(4096) as usize;
-        writer.write_all(&engine.audio_at(&start.add(&Time::new(n, engine.rate)?), count)?)?;
-        progress.advance_phase(
-            "audio",
-            Some(samples as u64),
-            "samples",
-            n as u64 + count as u64,
-        );
-    }
-    writer.flush()?;
-    drop(writer);
+    let video_scratch = scratch.path().join("video");
+    let audio_scratch = scratch.path().join("audio");
+    fs::create_dir(&video_scratch)?;
+    fs::create_dir(&audio_scratch)?;
+    let format = crate::media_stream::Format {
+        width: engine.width,
+        height: engine.height,
+        fps: engine.fps.clone(),
+        rate: engine.rate,
+        channels: engine.channels,
+        frames,
+    };
     let rendered = scratch.path().join("preview.mp4");
-    progress.ffmpeg(Command::new("ffmpeg")
-        .args(["-nostdin","-v","error","-y","-f","rawvideo","-pixel_format","rgba64le","-video_size",&format!("{}x{}",engine.width,engine.height),"-framerate",&engine.fps.expression(),"-i"]).arg(&video)
-        .args(["-f","f32le","-ar",&engine.rate.to_string(),"-ac",&engine.channels.to_string(),"-i"]).arg(&audio)
-        .args(["-filter_threads","2","-vf","scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=range=limited:colorspace=bt709:color_primaries=bt709:color_trc=bt709","-c:v","libx264","-threads","2","-preset","ultrafast","-crf","28","-c:a","aac","-movflags","+faststart"]).arg(&rendered), "encode", Some(frames as u64))?;
+    crate::media_stream::mp4(
+        &format,
+        &rendered,
+        true,
+        encoding,
+        progress,
+        |writer, progress| {
+            let mut engine = PreviewEngine::with_scale(
+                project,
+                dir,
+                sid,
+                &video_scratch,
+                progress,
+                options.scale,
+            )?;
+            progress.start("video", Some(frames as u64), "frames");
+            for n in 0..frames {
+                writer.write(
+                    &engine.video(&start.add(&Time::integer(n).div(&engine.fps)?), false)?,
+                )?;
+                progress.advance_phase("video", Some(frames as u64), "frames", (n + 1) as u64);
+            }
+            Ok(())
+        },
+        |writer, progress| {
+            let mut engine = PreviewEngine::with_scale(
+                project,
+                dir,
+                sid,
+                &audio_scratch,
+                progress,
+                options.scale,
+            )?;
+            progress.start("audio", Some(samples as u64), "samples");
+            for n in (0..samples).step_by(4096) {
+                let count = (samples - n).min(4096) as usize;
+                writer.write(&engine.audio_at(&start.add(&Time::new(n, engine.rate)?), count)?)?;
+                progress.advance_phase(
+                    "audio",
+                    Some(samples as u64),
+                    "samples",
+                    n as u64 + count as u64,
+                );
+            }
+            Ok(())
+        },
+    )?;
     progress.start("finalize", None, "files");
     progress.check_cancelled()?;
     entry.publish_file(&rendered)?;
     progress.finish();
     Ok(
-        json!({"ok":true,"output":output,"video":output,"preview":true,"revision":project["revision"],"sequenceId":sid,"startTime":start.json()?,"duration":duration.json()?,"frames":frames,"audioSamples":samples,"width":engine.width,"height":engine.height,"scale":options.scale,"frameRate":engine.fps.json()?,"audioSampleRate":engine.rate,"mime":"video/mp4"}),
+        json!({"ok":true,"output":output,"video":output,"preview":true,"revision":project["revision"],"sequenceId":sid,"startTime":start.json()?,"duration":duration.json()?,"frames":frames,"audioSamples":samples,"width":engine.width,"height":engine.height,"scale":options.scale,"frameRate":engine.fps.json()?,"audioSampleRate":engine.rate,"mime":"video/mp4","encoding":encoding.metadata(true)}),
     )
 }
 
 type StreamInput = (u16, SyncSender<Vec<u8>>, thread::JoinHandle<Result<()>>);
 fn stream_input(cancel: CancellationToken, halt: Arc<AtomicBool>) -> Result<StreamInput> {
-    let listener = TcpListener::bind(("127.0.0.1", 0))?;
-    listener.set_nonblocking(true)?;
+    let listener = crate::media_stream::listener()?;
     let port = listener.local_addr()?.port();
     let (send, receive) = mpsc::sync_channel::<Vec<u8>>(4);
     let handle = thread::spawn(move || -> Result<()> {
-        let mut socket = loop {
-            cancel.check()?;
-            if halt.load(Ordering::Acquire) {
-                return Ok(());
-            }
-            match listener.accept() {
-                Ok((socket, _)) => break socket,
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(10))
-                }
-                Err(error) => return Err(error.into()),
-            }
+        let Some(mut socket) = crate::media_stream::accept(listener, &cancel, &halt)? else {
+            return Ok(());
         };
-        socket.set_write_timeout(Some(Duration::from_millis(100)))?;
         loop {
             cancel.check()?;
             if halt.load(Ordering::Acquire) {
@@ -323,23 +363,7 @@ fn stream_input(cancel: CancellationToken, halt: Arc<AtomicBool>) -> Result<Stre
             }
             match receive.recv_timeout(Duration::from_millis(20)) {
                 Ok(data) => {
-                    let mut offset = 0;
-                    while offset < data.len() {
-                        cancel.check()?;
-                        if halt.load(Ordering::Acquire) {
-                            return Ok(());
-                        }
-                        match socket.write(&data[offset..]) {
-                            Ok(0) => anyhow::bail!("ENCODER_INPUT_CLOSED"),
-                            Ok(n) => offset += n,
-                            Err(e)
-                                if matches!(
-                                    e.kind(),
-                                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                                ) => {}
-                            Err(e) => return Err(e.into()),
-                        }
-                    }
+                    crate::media_stream::write(&mut socket, &data, &cancel, &halt)?;
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,

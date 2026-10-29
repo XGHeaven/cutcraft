@@ -12,7 +12,9 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, fs, path::Path, process::Command};
 
 pub fn capabilities() -> Value {
-    let mut capabilities = json!({"backend":"cutcraft-reference-0.1","specVersions":["0.1.0","0.3.0","0.4.0","0.5.0"],"video":["timestamp-indexed media (CFR/VFR)","images","image sequences (printf/hash patterns or ordered manifest, rational fps, on-demand decoding)","normal compositing in linear light","exact fit/remap/reverse/hold/loop sampling","frame-hold","frame-blend","nested sequences at mapped time","adjustment layers","position/anchor/scale/rotation/crop/opacity animation","builtin.color-grade 1.0/2.0","builtin.curves 1.0","builtin.gaussian-blur 1.0 (animated sigma, linear premultiplied RGBA)","builtin.lut 1.0/2.0 (1D/3D cube)","builtin.crossfade 2.0","builtin.dip-to-color 2.0","text/captions"],"animation":["owner clock","linear","hold","cubic-bezier","exact rational time / cubic-hermite","curve-preserving trim/split"],"audio":["mix/mute/solo","sample-clock gainDb/pan","linear fades","remap with explicit mute or resample policy","freeze intervals are silent"],"processors":[{"id":"cutcraft.linear-resample","version":"1.0.0","parameters":{},"note":"linear PCM interpolation, pitch follows speed; no adaptive antialias filter"}],"unsupported":["optical-flow processor","preserve-pitch processor","custom plugins","non-normal blend modes","non-square output pixels","remote assets","loop-phase split","Log/HDR"],"legacyBackend":"0.3 static projects retain ffmpeg-basic profile","preview":"full MP4; --at PNG; --start/--duration interval MP4; optional --scale; default max edge 640, max 24 fps","imageSequences":{"specVersion":"0.1.0","specVersions":["0.1.0","0.5.0"],"maxFrames":1000000,"patterns":["printf","hash"],"missing":["error","hold","skip"],"decodeCacheMiB":64,"legacyImport":"PROJECT_UPGRADE_REQUIRED"},"performance":"offline CPU reference renderer; video uses temporary raw disk, image sequences decode on demand with a bounded per-render cache"});
+    let mut capabilities = json!({"backend":"cutcraft-reference-0.1","specVersions":["0.1.0","0.3.0","0.4.0","0.5.0"],"video":["timestamp-indexed media (CFR/VFR)","images","image sequences (printf/hash patterns or ordered manifest, rational fps, on-demand decoding)","normal compositing in linear light","exact fit/remap/reverse/hold/loop sampling","frame-hold","frame-blend","nested sequences at mapped time","adjustment layers","position/anchor/scale/rotation/crop/opacity animation","builtin.color-grade 1.0/2.0","builtin.curves 1.0","builtin.gaussian-blur 1.0 (animated sigma, linear premultiplied RGBA)","builtin.lut 1.0/2.0 (1D/3D cube)","builtin.crossfade 2.0","builtin.dip-to-color 2.0","text/captions"],"animation":["owner clock","linear","hold","cubic-bezier","exact rational time / cubic-hermite","curve-preserving trim/split"],"audio":["mix/mute/solo","sample-clock gainDb/pan","linear fades","remap with explicit mute or resample policy","freeze intervals are silent"],"processors":[{"id":"cutcraft.linear-resample","version":"1.0.0","parameters":{},"note":"linear PCM interpolation, pitch follows speed; no adaptive antialias filter"}],"unsupported":["optical-flow processor","preserve-pitch processor","custom plugins","non-normal blend modes","non-square output pixels","remote assets","loop-phase split","Log/HDR"],"legacyBackend":"0.3 static projects retain ffmpeg-basic profile","preview":"full MP4; --at PNG; --start/--duration interval MP4; optional --scale; default max edge 640, max 24 fps","imageSequences":{"specVersion":"0.1.0","specVersions":["0.1.0","0.5.0"],"maxFrames":1000000,"patterns":["printf","hash"],"missing":["error","hold","skip"],"decodeCacheMiB":64,"legacyImport":"PROJECT_UPGRADE_REQUIRED"},"performance":"offline CPU reference renderer; composed video/audio stream to FFmpeg, source decoding may use temporary raw disk, image sequences decode on demand with a bounded per-render cache"});
+    capabilities["streamingExport"] = json!({"backend":"reference","modes":["render","full MP4 preview","interval MP4 preview"],"transport":"two loopback TCP raw inputs","video":"rgba64le","audio":"f32le","concurrentStages":["video","audio","encode"],"parallelVideoFrames":false,"wholeOutputRawSpool":false,"atomicPublish":true,"sourceDecodeCache":true});
+    capabilities["encoding"] = json!({"flags":["--video-encoder","--video-bitrate"],"encoders":["libx264","h264_videotoolbox","h264_nvenc","h264_qsv"],"defaultEncoder":"libx264","bitrateUnit":"bits/s","bitrateRange":[1,1000000000],"hardwareDefaultBitrate":{"render":8000000,"preview":2000000},"scope":["render (reference and legacy)","full MP4 preview","interval MP4 preview"],"hardwareFallback":false,"projectSetting":false,"gpuCompositing":false,"hardwareDecoding":false,"interactiveHlsEncoder":"libx264","availability":"requires compatible FFmpeg build, driver and device; listed names are adapters, not detected capabilities"});
     capabilities["cache"] = crate::cache::capabilities();
     capabilities["doctor"] = json!({"command":"doctor","projectRequired":false,"localProcess":true,"defaultTimeoutSeconds":10,"maxTimeoutSeconds":120,"failureExitCode":1,"report":"stdout JSON","checks":["ffmpeg/ffprobe versions","required encoders and filters","file-based filter graphs","text PNG","FFV1/PCM","H.264/AAC MP4","probe","video/audio decoding"]});
     capabilities["reviewPreview"] = json!({"specVersions":crate::capabilities::versions(crate::capabilities::Capability::InteractivePreview),"sheet":{"flag":"--sheet","defaultCount":12,"maxCount":128,"defaultColumns":4,"maxColumns":16,"sampling":"start+i*duration/count or start+i*interval (exclusive end)","interval":{"flag":"--interval","unit":"rational seconds","exclusiveMinimum":0,"conflictsWith":"--count"}},"boundaries":{"flag":"--boundaries","maxBoundaries":64,"explicitTime":"--at","sampling":"sequence frame grid: ceil(boundary*fps)-1 and ceil(boundary*fps)","missingFrame":"null","scope":"enabled top-level visual items, respecting track solo"},"defaultMaxEdge":320,"maxSheetPixels":16000000,"format":"PNG with time labels and JSON cell metadata","readOnly":true});
@@ -173,10 +175,40 @@ pub fn render_with_progress(
     overwrite: bool,
     progress: &crate::progress::Progress,
 ) -> Result<Value> {
+    render_with_options(
+        project,
+        dir,
+        sid,
+        output,
+        overwrite,
+        &crate::encoding::EncodingOptions::default(),
+        progress,
+    )
+}
+pub fn render_with_options(
+    project: &Value,
+    dir: &Path,
+    sid: &str,
+    output: &Path,
+    overwrite: bool,
+    encoding: &crate::encoding::EncodingOptions,
+    progress: &crate::progress::Progress,
+) -> Result<Value> {
+    encoding.validate()?;
     let result = if crate::frame_render::required(project) {
-        crate::frame_render::render_with_progress(project, dir, sid, output, overwrite, progress)
+        crate::frame_render::render_with_encoding(
+            project, dir, sid, output, overwrite, encoding, progress,
+        )
     } else {
-        render_internal(project, dir, sid, output, overwrite, false, progress)
+        render_internal(
+            project,
+            dir,
+            sid,
+            output,
+            overwrite,
+            (false, encoding),
+            progress,
+        )
     }?;
     progress.finish();
     Ok(result)
@@ -187,9 +219,10 @@ fn render_internal(
     sid: &str,
     output: &Path,
     overwrite: bool,
-    lossless: bool,
+    profile: (bool, &crate::encoding::EncodingOptions),
     progress: &crate::progress::Progress,
 ) -> Result<Value> {
+    let (lossless, encoding) = profile;
     progress.start("validate", None, "assets");
     media::validate(project, dir)?;
     let seq = project["sequences"]
@@ -470,7 +503,7 @@ fn render_internal(
                                 text(&item["sequenceId"]),
                                 &path,
                                 false,
-                                true,
+                                (true, encoding),
                                 progress,
                             )?;
                         }
@@ -723,13 +756,8 @@ fn render_internal(
             "pc",
         ]);
     } else {
+        encoding.apply(&mut cmd, false);
         cmd.args([
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "18",
             "-c:a",
             "aac",
             "-colorspace",
@@ -758,7 +786,7 @@ fn render_internal(
         staged.persist_noclobber(&output).map_err(|e| e.error)?;
     }
     Ok(
-        json!({"ok":true,"output":output,"sequenceId":sid,"revision":project["revision"],"frames":frames,"duration":duration.json()?,"backend":"ffmpeg-basic"}),
+        json!({"ok":true,"output":output,"sequenceId":sid,"revision":project["revision"],"frames":frames,"duration":duration.json()?,"backend":"ffmpeg-basic","encoding":if lossless {json!({"videoEncoder":"ffv1"})} else {encoding.metadata(false)}}),
     )
 }
 pub fn preview(project: &Value, dir: &Path, sid: &str) -> Result<Value> {
@@ -770,7 +798,23 @@ pub fn preview_with_progress(
     sid: &str,
     progress: &crate::progress::Progress,
 ) -> Result<Value> {
-    let hash = crate::store::hash(project)?;
+    preview_with_encoding(
+        project,
+        dir,
+        sid,
+        &crate::encoding::EncodingOptions::default(),
+        progress,
+    )
+}
+pub fn preview_with_encoding(
+    project: &Value,
+    dir: &Path,
+    sid: &str,
+    encoding: &crate::encoding::EncodingOptions,
+    progress: &crate::progress::Progress,
+) -> Result<Value> {
+    encoding.validate()?;
+    let hash = crate::store::hash(&json!({"project":project,"encoding":encoding}))?;
     // Profile/version separates low-resolution artifacts from legacy full-size previews.
     let cache = dir.join("cache").join(format!(
         "preview-{}-640-24-v1-{}-{sid}",
@@ -782,7 +826,7 @@ pub fn preview_with_progress(
     let _build = entry.build_lock()?;
     fs::create_dir_all(&cache)?;
     let output = cache.join("preview.mp4");
-    let mut result = crate::frame_render::preview(project, dir, sid, &output, progress)?;
+    let mut result = crate::frame_render::preview(project, dir, sid, &output, encoding, progress)?;
     entry.finish()?;
     result["video"] = json!(output);
     progress.finish();

@@ -7,6 +7,7 @@ pub mod edit;
 pub mod fonts;
 pub mod media;
 pub mod media_process;
+mod media_stream;
 pub mod preview;
 pub mod preview_review;
 pub mod progress;
@@ -32,3 +33,5 @@ pub mod frame_render;
 pub mod timeline;
 
 pub mod image_sequence;
+
+pub mod encoding;

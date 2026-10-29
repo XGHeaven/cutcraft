@@ -197,6 +197,13 @@ impl Progress {
             "completed":state.completed,"total":state.total,"unit":state.unit,
             "elapsedSeconds":self.started.elapsed().as_secs_f64(),"phaseElapsedSeconds":elapsed,
             "estimatedRemainingPhaseSeconds":eta});
+        self.relay(value);
+    }
+
+    /// Worker progress is delivered on the owning thread, preserving callback
+    /// ordering and keeping stdout reserved for the final CLI result.
+    pub(crate) fn relay(&self, mut value: Value) {
+        value["elapsedSeconds"] = json!(self.started.elapsed().as_secs_f64());
         if let Some(callback) = &self.callback {
             callback(value.clone());
         }
@@ -207,18 +214,22 @@ impl Progress {
         if self.mode == Mode::Json {
             let _ = writeln!(stderr, "{}", value);
         } else {
-            let total = state.total.map_or_else(|| "?".into(), |n| n.to_string());
-            let eta = eta.map_or_else(|| "unknown".into(), |n| format!("~{n:.1}s"));
+            let total = value["total"]
+                .as_u64()
+                .map_or_else(|| "?".into(), |n| n.to_string());
+            let eta = value["estimatedRemainingPhaseSeconds"]
+                .as_f64()
+                .map_or_else(|| "unknown".into(), |n| format!("~{n:.1}s"));
             let _ = writeln!(
                 stderr,
                 "[{}] {}/{} {} | elapsed {:.1}s | phase ETA {} | {}",
-                state.phase,
-                state.completed,
+                value["phase"].as_str().unwrap_or("unknown"),
+                value["completed"],
                 total,
-                state.unit,
+                value["unit"].as_str().unwrap_or("items"),
                 self.started.elapsed().as_secs_f64(),
                 eta,
-                status
+                value["status"].as_str().unwrap_or("running")
             );
         }
     }

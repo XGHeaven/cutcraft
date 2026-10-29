@@ -62,7 +62,8 @@ cutcraft -p demo.cut render --progress json --output output/final.mp4 2>progress
 Rust 库原有 render/preview 函数保持静默；`render_with_progress`、`preview_with_progress`
 接受 `progress::Progress`，便于调用方选择 stderr 输出模式。
 
-参考渲染阶段：validate → video → audio → encode → finalize → complete。
+参考渲染阶段：validate → video / audio / encode 并发执行 → finalize → complete。
+流式导出的 video、audio、encode 事件可以交错，各自维护 completed/total；不要依赖阶段只出现一次或固定先后顺序，也不要把阶段百分比相加。详见[流式导出](streaming-export.md)。
 首次使用媒体时会在当前合成阶段内临时报告 probe/decode_video/decode_audio，完成后返回父阶段。
 旧版基础后端主要报告 validate、encode、finalize；底层 FFmpeg 的进度不代表整个任务的进度。
 total 无法确定时为 null，解码音频的 completed 单位为源媒体微秒，不是已经花费的时间。

@@ -222,7 +222,9 @@ cutcraft -p my-film.cut validate --level media
 
 支持嵌套序列、调整层、变换／裁剪、调色、RGB 曲线、1D/3D LUT、属性／效果动画、内置转场、精确变速、loop/hold 和带有效时间戳的 VFR。音频支持显式重采样、gain/pan 动画与线性淡化；光流、保音高、自定义插件和非普通混合模式仍明确报错。
 
-不带选项的 `preview` 导出当前 revision 的低分辨率 MP4，路径通过 JSON 的 `video` / `output` 返回，文件位于项目的 `cache/` 下。最长边限制为 640 像素，最高 24 fps；较小素材不放大，较低帧率保持原值，尺寸取偶数以兼容 H.264。素材解码、特效合成和嵌套序列均使用缩小的画布，编码采用 ultrafast / CRF 28，音频采样率最高 24 kHz。重新运行会重新生成整段序列预览；不再生成 HTML，也不再提供 `--open`。项目格式和正式 `render` 导出参数不变。新增 `preview --at` 导出 PNG，`--start/--duration` 导出带音频的区间 MP4，`--scale` 控制分辨率，复用网页预览引擎；`--sheet` 生成带时间标注的缩略图总览，`--boundaries` 检查片段起止点前后帧，见[预览与画面检查](docs/preview.md)。默认系统字体依赖机器环境；需要固定字幕字体时使用 `style.fontAssetId`。输出像素的可复现性还取决于 FFmpeg、字体和编码配置版本。
+不带选项的 `preview` 导出当前 revision 的低分辨率 MP4，路径通过 JSON 的 `video` / `output` 返回，文件位于项目的 `cache/` 下。最长边限制为 640 像素，最高 24 fps；较小素材不放大，较低帧率保持原值，尺寸取偶数以兼容 H.264。素材解码、特效合成和嵌套序列均使用缩小的画布，默认编码采用 libx264 ultrafast / CRF 28，音频采样率最高 24 kHz。重新运行会重新生成整段序列预览；不再生成 HTML，也不再提供 `--open`。项目格式和正式 `render` 导出参数不变。新增 `preview --at` 导出 PNG，`--start/--duration` 导出带音频的区间 MP4，`--scale` 控制分辨率，复用网页预览引擎；`--sheet` 生成带时间标注的缩略图总览，`--boundaries` 检查片段起止点前后帧，见[预览与画面检查](docs/preview.md)。默认系统字体依赖机器环境；需要固定字幕字体时使用 `style.fontAssetId`。输出像素的可复现性还取决于 FFmpeg、字体和编码配置版本。
+
+正式导出和 MP4 预览现已使用流式编码：合成视频、混合音频时就将数据送入 FFmpeg，减少整条合成结果的临时磁盘读写；命令用法不变，成片仍成功后原子发布。原理与边界见[流式导出](docs/streaming-export.md)。 `render` 和 MP4 `preview` 可加 `--video-encoder h264_videotoolbox|h264_nvenc|h264_qsv` 选择硬件编码，默认 `libx264`；`--video-bitrate 8000000` 设置目标码率（bits/s）。指定硬件不可用时明确失败；解码和合成仍使用 CPU。
 
 缓存由统一管理器维护，支持跨进程占用保护和按最近使用顺序淘汰。用 `cutcraft -p PROJECT cache status` 查看占用，`cache clean --dry-run` 预览可回收内容，`cache clean` 执行清理；素材、使用中的缓存与未知文件会保留。默认每工程 1 GiB 总预算，详细策略见[缓存管理](docs/cache.md)。
 

@@ -32,6 +32,7 @@ cutcraft -p film.cut preview --duration 2
 
 PNG 位于 `cache/interactive-v1/`，区间 MP4 位于 `cache/preview-ranges-v1/`；这些都是可重建缓存。
 区间每次重新合成/编码，但复用有界源解码缓存，不会先渲染整条序列再裁剪，也不创建临时工程。
+整段与区间 MP4 采用[流式导出](streaming-export.md)：音视频生产与编码并发，不落盘整条合成视频和 PCM，源解码缓存及最终 MP4 暂存保留。
 只有成功编码、同步和原子发布后才报告完成；失败保留同路径的既有结果。
 实现为 CPU 参考路径，不保证实时；长区间的未压缩合成中间文件仍会占用临时磁盘。
 
@@ -56,3 +57,5 @@ cutcraft -p film.cut preview --boundaries --at 5/2
 两种模式互斥，--sheet 不接受 --at；边界模式的 --at 不与 start/duration 组合。默认缩略图最长边 320（不放大小画布），可用 --scale 覆盖。结果包含 output/image、revision、sequenceId、cells（精确 time、格子位置及画面尺寸），边界模式另有 boundaries（边界时间和相关 Item/轨道 ID）、frameRate 和每格的 side/frameIndex。空序列、无匹配边界、非法参数及超出拼图限制（任一边 32768 或总计 1600 万像素）明确报错。
 
 输出位于 `cache/preview-sheets-v1/`，每次复用同一个 PreviewEngine 合成所需帧，再原子发布一张 PNG。格式支持与单帧预览相同：公开 0.1.0 和内部 0.4/0.5；无需改变工程协议或规范修订号。
+
+MP4 预览可通过 `--video-encoder` 和 `--video-bitrate` 配置编码器与目标码率，见[编码配置](streaming-export.md#选择编码器)。完整预览和区间预览共用配置，缓存按配置区分；PNG/拼图/边界帧拒绝非默认视频编码选项。网页 HLS 播放仍用 libx264。

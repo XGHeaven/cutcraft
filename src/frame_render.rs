@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use std::{
     collections::{HashMap, VecDeque},
     fs::{self, File},
-    io::{BufWriter, Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     process::Command,
     sync::{Mutex, OnceLock},
@@ -1744,16 +1744,44 @@ pub(crate) fn render_with_progress(
     overwrite: bool,
     progress: &crate::progress::Progress,
 ) -> Result<Value> {
-    render_profile(project, dir, sid, output, overwrite, false, progress)
+    render_with_encoding(
+        project,
+        dir,
+        sid,
+        output,
+        overwrite,
+        &crate::encoding::EncodingOptions::default(),
+        progress,
+    )
+}
+pub(crate) fn render_with_encoding(
+    project: &Value,
+    dir: &Path,
+    sid: &str,
+    output: &Path,
+    overwrite: bool,
+    encoding: &crate::encoding::EncodingOptions,
+    progress: &crate::progress::Progress,
+) -> Result<Value> {
+    render_profile(
+        project,
+        dir,
+        sid,
+        output,
+        overwrite,
+        (false, encoding),
+        progress,
+    )
 }
 pub(crate) fn preview(
     project: &Value,
     dir: &Path,
     sid: &str,
     output: &Path,
+    encoding: &crate::encoding::EncodingOptions,
     progress: &crate::progress::Progress,
 ) -> Result<Value> {
-    render_profile(project, dir, sid, output, true, true, progress)
+    render_profile(project, dir, sid, output, true, (true, encoding), progress)
 }
 
 /// The interactive facade shares the reference evaluator and color pipeline.
@@ -1903,9 +1931,11 @@ fn render_profile(
     sid: &str,
     output: &Path,
     overwrite: bool,
-    preview: bool,
+    profile: (bool, &crate::encoding::EncodingOptions),
     progress: &crate::progress::Progress,
 ) -> Result<Value> {
+    let (preview, encoding) = profile;
+    encoding.validate()?;
     progress.start("validate", None, "assets");
     media::validate(project, dir)?;
     preflight(project)?;
@@ -1995,72 +2025,104 @@ fn render_profile(
             }
         }
     }
-    let mut engine = Engine {
-        progress,
-        project,
-        preview,
-        scale: None,
-        text_scales,
-        dir,
-        scratch: scratch_path,
-        sources: HashMap::new(),
-        image_cache: VecDeque::new(),
-        interactive: false,
-        native: HashMap::new(),
-    };
-    let video = scratch_path.join("video.rgba");
-    let mut writer = BufWriter::new(File::create(&video)?);
-    progress.start("video", Some(frames as u64), "frames");
-    for n in 0..frames {
-        progress.check_cancelled()?;
-        let t = Time::integer(n).div(&fps)?;
-        let frame = engine.sequence_frame(sid, &t, false, 0)?;
-        writer.write_all(&bytes(&frame))?;
-        progress.advance((n + 1) as u64);
-    }
-    writer.flush()?;
-    drop(writer);
-    let audio = scratch_path.join("audio.f32");
-    let mut writer = BufWriter::new(File::create(&audio)?);
     let samples = duration.mul(&Time::integer(rate)).ceil_i64()?;
     let has_audio = project["sequences"].as_object().unwrap().values().any(|s| {
         array(&s["tracks"])
             .iter()
             .any(|t| t["kind"] == "audio" && enabled(t) && !array(&t["items"]).is_empty())
     });
-    progress.start("audio", Some(samples as u64), "samples");
-    for n in 0..samples {
-        if n % 2048 == 0 {
-            progress.check_cancelled()?;
-        }
-        let sample = if has_audio {
-            engine.audio_sample(sid, &Time::new(n, rate)?, false, rate, channels, 0)?
-        } else {
-            vec![0.; channels]
-        };
-        for s in sample {
-            writer.write_all(&(s as f32).to_le_bytes())?;
-        }
-        if n % 2048 == 0 || n + 1 == samples {
-            progress.advance((n + 1) as u64);
-        }
-    }
-    writer.flush()?;
-    drop(writer);
+    let video_scratch = scratch_path.join("video");
+    let audio_scratch = scratch_path.join("audio");
+    fs::create_dir(&video_scratch)?;
+    fs::create_dir(&audio_scratch)?;
+    let format = crate::media_stream::Format {
+        width: w,
+        height: h,
+        fps: fps.clone(),
+        rate,
+        channels,
+        frames,
+    };
     let rendered = scratch_path.join("render.mp4");
-    progress.ffmpeg(Command::new("ffmpeg").args(["-nostdin","-v","error","-y","-threads","2","-f","rawvideo","-pixel_format","rgba64le","-video_size",&format!("{w}x{h}"),"-framerate",&fps.expression(),"-i"]).arg(video).args(["-f","f32le","-ar",&rate.to_string(),"-ac",&channels.to_string(),"-i"]).arg(audio).args(["-filter_threads","2","-vf","scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=range=limited:colorspace=bt709:color_primaries=bt709:color_trc=bt709","-c:v","libx264","-threads","2","-preset",if preview{"ultrafast"}else{"fast"},"-crf",if preview{"28"}else{"18"},"-c:a","aac","-movflags","+faststart"]).arg(&rendered), "encode", Some(frames as u64))?;
+    crate::media_stream::mp4(
+        &format,
+        &rendered,
+        preview,
+        encoding,
+        progress,
+        |writer, progress| {
+            let mut engine = Engine {
+                progress,
+                project,
+                preview,
+                scale: None,
+                text_scales: text_scales.clone(),
+                dir,
+                scratch: &video_scratch,
+                sources: HashMap::new(),
+                image_cache: VecDeque::new(),
+                interactive: false,
+                native: HashMap::new(),
+            };
+            progress.start("video", Some(frames as u64), "frames");
+            for n in 0..frames {
+                progress.check_cancelled()?;
+                let t = Time::integer(n).div(&fps)?;
+                let frame = engine.sequence_frame(sid, &t, false, 0)?;
+                writer.write(&bytes(&frame))?;
+                progress.advance_phase("video", Some(frames as u64), "frames", (n + 1) as u64);
+            }
+            Ok(())
+        },
+        |writer, progress| {
+            let mut engine = Engine {
+                progress,
+                project,
+                preview,
+                scale: None,
+                text_scales: HashMap::new(),
+                dir,
+                scratch: &audio_scratch,
+                sources: HashMap::new(),
+                image_cache: VecDeque::new(),
+                interactive: false,
+                native: HashMap::new(),
+            };
+            progress.start("audio", Some(samples as u64), "samples");
+            for first in (0..samples).step_by(4096) {
+                progress.check_cancelled()?;
+                let end = (first + 4096).min(samples);
+                let mut block = Vec::with_capacity((end - first) as usize * channels * 4);
+                for n in first..end {
+                    let sample = if has_audio {
+                        engine.audio_sample(sid, &Time::new(n, rate)?, false, rate, channels, 0)?
+                    } else {
+                        vec![0.; channels]
+                    };
+                    for value in sample {
+                        block.extend_from_slice(&(value as f32).to_le_bytes());
+                    }
+                }
+                writer.write(&block)?;
+                progress.advance_phase("audio", Some(samples as u64), "samples", end as u64);
+            }
+            Ok(())
+        },
+    )?;
     progress.start("finalize", None, "files");
     progress.check_cancelled()?;
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
     std::io::copy(&mut File::open(rendered)?, &mut staged)?;
     staged.as_file().sync_all()?;
+    progress.check_cancelled()?;
     if overwrite {
         staged.persist(&output).map_err(|e| e.error)?;
     } else {
         staged.persist_noclobber(&output).map_err(|e| e.error)?;
     }
+    crate::store::sync_dir(parent)?;
     Ok(
-        json!({"ok":true,"output":output,"sequenceId":sid,"revision":project["revision"],"frames":frames,"duration":duration.json()?,"backend":"cutcraft-reference-0.5","width":w,"height":h,"frameRate":fps.json()?,"preview":preview}),
+        json!({"ok":true,"output":output,"sequenceId":sid,"revision":project["revision"],"frames":frames,"duration":duration.json()?,"backend":"cutcraft-reference-0.5","width":w,"height":h,"frameRate":fps.json()?,"preview":preview,"encoding":encoding.metadata(preview)}),
     )
 }
 

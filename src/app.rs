@@ -220,6 +220,9 @@ pub enum Cmd {
         /// Progress on stderr; stdout remains a single result JSON.
         #[arg(long, value_enum, default_value = "auto")]
         progress: ProgressMode,
+        #[command(flatten)]
+        #[serde(default)]
+        encoding: crate::encoding::EncodingOptions,
     },
     /// Export MP4/PNG previews, a thumbnail sheet, or boundary frame pairs.
     Preview {
@@ -263,6 +266,9 @@ pub enum Cmd {
         scale: Option<f64>,
         #[arg(long, value_enum, default_value = "auto")]
         progress: ProgressMode,
+        #[command(flatten)]
+        #[serde(default)]
+        encoding: crate::encoding::EncodingOptions,
     },
     /// Diagnose local FFmpeg/ffprobe capabilities and media processing.
     Doctor {
@@ -1193,8 +1199,8 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
         },
         Cmd::Marker{sequence:s,name,at,duration}=>store.command(json!({"type":"marker.put","sequenceId":sequence(&store.project()?,s),"marker":{"id":id("marker"),"name":name,"start":at.json()?,"duration":duration.json()?}}),override_locks,dry),
         Cmd::Sample{sequence:s,at}=>{let p=store.project()?;project::sample(&p,&sequence(&p,s),&at)},
-        Cmd::Render{sequence:s,output,overwrite,progress}=>{ensure!(!dry,"--dry-run is for edit commands");let p=store.project()?;let output=if output.is_absolute(){output}else{store.dir.join(output)};let dir=store.dir.clone();drop(store);render::render_with_progress(&p,&dir,&sequence(&p,s),&output,overwrite,reporter.unwrap_or(&progress.reporter()))},
-        Cmd::Preview{sequence:s,at,start,duration,scale,progress,sheet,boundaries,count,columns,interval}=>{
+        Cmd::Render{sequence:s,output,overwrite,progress,encoding}=>{ensure!(!dry,"--dry-run is for edit commands");let p=store.project()?;let output=if output.is_absolute(){output}else{store.dir.join(output)};let dir=store.dir.clone();drop(store);render::render_with_options(&p,&dir,&sequence(&p,s),&output,overwrite,&encoding,reporter.unwrap_or(&progress.reporter()))},
+        Cmd::Preview{sequence:s,at,start,duration,scale,progress,sheet,boundaries,count,columns,interval,encoding}=>{
             ensure!(!dry,"--dry-run is for edit commands");
             let p=store.project()?;let dir=store.dir.clone();drop(store);
             let local_progress = progress.reporter();
@@ -1202,12 +1208,14 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
             let review = crate::preview_review::Options { sheet, boundaries, count, columns, interval };
             let selection = crate::preview::ExportOptions { at, start, duration, scale };
             review.validate(&selection)?;
+            encoding.validate()?;
+            ensure!(!(sheet || boundaries || selection.at.is_some()) || encoding.is_default(), "ENCODING_OPTIONS_CONFLICT: video encoding only applies to MP4 previews");
             if sheet || boundaries {
                 crate::preview_review::export(&p,&dir,&sequence(&p,s),&selection,&review,progress)
             } else if selection.at.is_none() && selection.start.is_none() && selection.duration.is_none() && scale.is_none() {
-                render::preview_with_progress(&p,&dir,&sequence(&p,s),progress)
+                render::preview_with_encoding(&p,&dir,&sequence(&p,s),&encoding,progress)
             } else {
-                crate::preview::export(&p,&dir,&sequence(&p,s),&selection,progress)
+                crate::preview::export_with_encoding(&p,&dir,&sequence(&p,s),&selection,&encoding,progress)
             }
         },
         _=>unreachable!()
