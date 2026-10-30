@@ -288,6 +288,12 @@ fn encode(scratch: &Path, lossless: bool) -> Command {
 }
 
 pub fn run(timeout: u64) -> Result<Value> {
+    run_with_encoder(timeout, None)
+}
+pub fn run_with_encoder(
+    timeout: u64,
+    selected: Option<crate::encoding::VideoEncoder>,
+) -> Result<Value> {
     ensure!(
         (1..=120).contains(&timeout),
         "DOCTOR_INVALID_TIMEOUT: expected 1..120 seconds"
@@ -484,12 +490,123 @@ pub fn run(timeout: u64) -> Result<Value> {
             );
         }
     }
+    if let Some(selected) = selected {
+        if encoder {
+            diagnose_encoder(&mut report, selected, probe)?;
+        } else {
+            report.record(
+                "encoder.encode",
+                "skipped",
+                "ffmpeg could not start or report its version",
+            );
+        }
+    }
     let mut summary = json!({"passed":0,"failed":0,"warning":0,"skipped":0});
     for check in &report.checks {
         let status = check["status"].as_str().unwrap();
         summary[status] = json!(summary[status].as_u64().unwrap() + 1);
     }
     Ok(
-        json!({"ok":summary["failed"]==0,"command":"doctor","cliVersion":env!("CARGO_PKG_VERSION"),"platform":{"os":std::env::consts::OS,"arch":std::env::consts::ARCH},"timeoutSeconds":timeout,"checks":report.checks,"summary":summary}),
+        json!({"ok":summary["failed"]==0,"command":"doctor","cliVersion":env!("CARGO_PKG_VERSION"),"platform":{"os":std::env::consts::OS,"arch":std::env::consts::ARCH},"timeoutSeconds":timeout,"selectedVideoEncoder":selected.map(|e|e.name()),"checks":report.checks,"summary":summary}),
     )
+}
+
+fn diagnose_encoder(
+    report: &mut Report,
+    selected: crate::encoding::VideoEncoder,
+    probe: bool,
+) -> Result<()> {
+    let scratch = tempfile::tempdir().context("create encoder diagnostic temporary directory")?;
+    let options = crate::encoding::EncodingOptions {
+        video_encoder: selected,
+        video_bitrate: Some(2_000_000),
+    };
+    let mut raw = Vec::with_capacity(128 * 96 * 8 * 2);
+    for c in [[65535u16, 0, 0, 65535], [0, 0, 65535, 65535]] {
+        for _ in 0..128 * 96 {
+            for v in c {
+                raw.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+    }
+    fs::write(scratch.path().join("input.rgba"), raw)?;
+    let hint="Selected encoder requires a compatible FFmpeg build, driver and hardware device. Check ffmpeg -h encoder=NAME; no software fallback is attempted. See docs/doctor.md.";
+    let mut command = ffmpeg(scratch.path());
+    command.args(["-f","rawvideo","-pixel_format","rgba64le","-video_size","128x96","-framerate","10","-i","input.rgba","-frames:v","2","-vf",&format!("scale=out_color_matrix=bt709:out_range=tv,format={},setparams=range=limited:colorspace=bt709:color_primaries=bt709:color_trc=bt709",options.pixel_format())]);
+    options.apply(&mut command, false);
+    command.args(["-an", "-movflags", "+faststart", "encoder.mp4"]);
+    let encoded = report
+        .command("encoder.encode", &mut command, hint)
+        .is_some();
+    let check = report.checks.last_mut().unwrap();
+    check["videoEncoder"] = json!(selected.name());
+    check["encoding"] = options.metadata(false);
+    if !encoded {
+        for id in ["encoder.probe", "encoder.decode"] {
+            report.record(id, "skipped", "Selected encoder failed");
+        }
+        return Ok(());
+    }
+    if probe {
+        if let Some(out) = report.command(
+            "encoder.probe",
+            Command::new("ffprobe").current_dir(scratch.path()).args([
+                "-v",
+                "error",
+                "-count_frames",
+                "-show_streams",
+                "-of",
+                "json",
+                "encoder.mp4",
+            ]),
+            hint,
+        ) {
+            let valid = serde_json::from_slice::<Value>(&out.stdout)
+                .ok()
+                .is_some_and(|v| {
+                    v["streams"].as_array().is_some_and(|streams| {
+                        streams.len() == 1
+                            && streams[0]["codec_name"] == "h264"
+                            && streams[0]["width"] == 128
+                            && streams[0]["height"] == 96
+                            && streams[0]["nb_read_frames"] == "2"
+                    })
+                });
+            report.verify("encoder.probe", valid, "Expected two 128x96 H.264 frames");
+        }
+    } else {
+        report.record("encoder.probe", "skipped", "ffprobe unavailable");
+    }
+    if let Some(out) = report.command(
+        "encoder.decode",
+        ffmpeg(scratch.path()).args([
+            "-i",
+            "encoder.mp4",
+            "-map",
+            "0:v:0",
+            "-threads",
+            "2",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "pipe:1",
+        ]),
+        hint,
+    ) {
+        let frame = 128 * 96 * 3;
+        let valid = out.stdout.len() == frame * 2
+            && out.stdout[..frame]
+                .chunks_exact(3)
+                .all(|p| p[0] > 230 && p[1] < 20 && p[2] < 20)
+            && out.stdout[frame..]
+                .chunks_exact(3)
+                .all(|p| p[2] > 230 && p[0] < 20 && p[1] < 20);
+        report.verify(
+            "encoder.decode",
+            valid,
+            "Decoded frame count or red/blue test pixels differ from expected output",
+        );
+    }
+    Ok(())
 }

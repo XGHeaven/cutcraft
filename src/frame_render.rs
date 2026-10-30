@@ -1088,44 +1088,60 @@ impl Engine<'_> {
             ensure!(raw.len() == frame_size(w, h)?, "TEXT_CACHE_INVALID");
             return Ok(raw);
         }
-        let margin = 20. * scale;
-        let x = match text(&style["align"]) {
-            "left" => margin.to_string(),
-            "right" => format!("w-tw-{margin}"),
-            _ => "(w-tw)/2".into(),
-        };
-        let y = match text(&style["position"]) {
-            "top" => margin.to_string(),
-            "center" => "(h-th)/2".into(),
-            _ => format!("h-th-{}", 40. * scale),
-        };
-        let font = if let Some(font) = resolved_font {
-            font.prepare(self.scratch, &format!("font{n}.ttf"), content)?
-        } else {
-            String::new()
-        };
         let out = self.scratch.join(format!("text{n}.raw"));
-        let graph=format!("color=black@0:s={w}x{h},format=rgba,drawtext=textfile={txt}:expansion=none{font}:fontsize={}:fontcolor=white:x={x}:y={y},{},format=rgba64le",style["fontSizePixels"].as_f64().unwrap_or(48.)*scale, visual::text_paint(&style["color"])?);
-        run(Command::new("ffmpeg")
-            .current_dir(self.scratch)
-            .args([
-                "-v",
-                "error",
-                "-y",
-                "-f",
-                "lavfi",
-                "-i",
-                &graph,
-                "-frames:v",
-                "1",
-                "-threads",
-                "2",
-                "-pix_fmt",
-                "rgba64le",
-                "-f",
-                "rawvideo",
-            ])
-            .arg(&out))?;
+        if style.get("card").is_some() {
+            let raw =
+                crate::media_process::with_cancellation(self.progress.cancellation(), || {
+                    crate::text_card::render(
+                        style,
+                        content,
+                        w,
+                        h,
+                        scale,
+                        resolved_font.as_ref(),
+                        self.scratch,
+                    )
+                })?;
+            fs::write(&out, raw)?;
+        } else {
+            let margin = 20. * scale;
+            let x = match text(&style["align"]) {
+                "left" => margin.to_string(),
+                "right" => format!("w-tw-{margin}"),
+                _ => "(w-tw)/2".into(),
+            };
+            let y = match text(&style["position"]) {
+                "top" => margin.to_string(),
+                "center" => "(h-th)/2".into(),
+                _ => format!("h-th-{}", 40. * scale),
+            };
+            let font = if let Some(font) = resolved_font {
+                font.prepare(self.scratch, &format!("font{n}.ttf"), content)?
+            } else {
+                String::new()
+            };
+            let graph=format!("color=black@0:s={w}x{h},format=rgba,drawtext=textfile={txt}:expansion=none{font}:fontsize={}:fontcolor=white:x={x}:y={y},{},format=rgba64le",style["fontSizePixels"].as_f64().unwrap_or(48.)*scale, visual::text_paint(&style["color"])?);
+            run(Command::new("ffmpeg")
+                .current_dir(self.scratch)
+                .args([
+                    "-v",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    &graph,
+                    "-frames:v",
+                    "1",
+                    "-threads",
+                    "2",
+                    "-pix_fmt",
+                    "rgba64le",
+                    "-f",
+                    "rawvideo",
+                ])
+                .arg(&out))?;
+        }
         let mut s = Source {
             _lease: None,
             pcm: None,

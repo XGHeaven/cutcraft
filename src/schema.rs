@@ -4,10 +4,14 @@ use jsonschema::{Resource, Validator};
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::OnceLock};
 
-pub const SCHEMAS: [(&str, &str); 7] = [
+pub const SCHEMAS: [(&str, &str); 8] = [
     (
         "animation",
         include_str!("../spec/schemas/animation.schema.json"),
+    ),
+    (
+        "text-card",
+        include_str!("../spec/schemas/text-card.schema.json"),
     ),
     ("effect", include_str!("../spec/schemas/effect.schema.json")),
     (

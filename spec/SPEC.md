@@ -1,6 +1,6 @@
 # Cutcraft Project Specification 0.1.0
 
-规范修订：**`0.1.0-r2`**。此标识用于引用当前规范与 Schema 集合，不写入工程；`specVersion`、`eventVersion` 和 Schema URI 保持原有含义。详见[修订记录](REVISIONS.md)。
+规范修订：**`0.1.0-r3`**。此标识用于引用当前规范与 Schema 集合，不写入工程；`specVersion`、`eventVersion` 和 Schema URI 保持原有含义。详见[修订记录](REVISIONS.md)。
 
 本文中的 **MUST**、**MUST NOT**、**SHOULD** 和 **MAY** 表示规范性要求。
 
@@ -143,6 +143,10 @@ Track 是同类型 Item 的容器。支持：
 #### CaptionItem
 
 位于 `subtitle` 轨道，保存字幕文本、样式和可选词级时间。词级时间相对于 CaptionItem 的 `timelineRange.start`，且 MUST 完全落在 CaptionItem 范围内。
+
+#### 文字卡片
+
+公开 0.1.0 的 `builtin.text.parameters` 与字幕 `style` 可包含 `card`。固定尺寸、内边距、圆角、背景/渐变、边框、阴影、描边及多行排版的完整语义与错误规则见 [TEXT_CARDS.md](TEXT_CARDS.md)。省略保持原行为；内部归档版本不支持，不自动迁移。
 
 #### 文字字体选择
 

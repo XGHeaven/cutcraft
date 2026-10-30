@@ -13,6 +13,7 @@ pub mod preview_review;
 pub mod progress;
 pub mod project;
 pub mod query;
+pub mod range_edit;
 pub mod render;
 pub mod schema;
 pub mod store;
@@ -35,3 +36,5 @@ pub mod timeline;
 pub mod image_sequence;
 
 pub mod encoding;
+
+pub mod text_card;

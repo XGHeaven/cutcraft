@@ -1,6 +1,6 @@
 # 搜索素材与定位片段
 
-这些命令查询项目当前快照，返回 JSON、`revision` 和实际 ID，不修改项目或历史，不启动 FFmpeg。列表返回 `count` 和对应的 `assets`、`items`、`tracks`、`sequences` 或 `usages` 数组；没有匹配时返回空数组。详情和 ID 筛选需要完整 ID，不存在则报错，不会把拼错的 ID 当作空搜索结果。
+本页的搜索和详情命令查询项目当前快照，返回 JSON、`revision` 和实际 ID，不修改项目或历史，不启动 FFmpeg。列表返回 `count` 和对应的 `assets`、`items`、`tracks`、`sequences` 或 `usages` 数组；没有匹配时返回空数组。详情和 ID 筛选需要完整 ID，不存在则报错，不会把拼错的 ID 当作空搜索结果。
 
 ## 素材搜索
 
@@ -21,6 +21,36 @@ cutcraft -p demo.cut asset info ASSET_ID
 Windows 下路径查询接受 `/` 和 `\` 两种分隔符，包括通过素材路径搜索片段；Unix 下反斜杠仍按文件名中的字面字符处理。返回的 `path` 保持系统原生格式。
 
 列表提供 `assetId`、名称、路径、类型、存储方式、标签、`streams` 和 `usageCount`。`asset info` 额外返回完整 `asset` 对象，可据此保留字段并构造 `asset.put`。
+
+## 素材替换
+
+```sh
+cutcraft -p demo.cut asset replace ASSET_ID /path/to/new-audio.wav
+cutcraft -p demo.cut asset replace ASSET_ID /path/to/new-video.mp4 --managed --color-space rec709
+cutcraft -p demo.cut asset replace ASSET_ID /path/to/new-video.mp4 --dry-run
+cutcraft -p demo.cut undo
+```
+
+`asset replace ASSET_ID FILE` 作用于素材记录，所有序列中引用该 ID 的片段都会使用新文件。CLI 重新探测流信息、精确有理时长和 SHA-256 指纹，通过现有 `asset.put` 提交一次可撤销操作；工程协议版本、素材 ID、Stream ID、片段 ID、时间线/素材范围、特效、字幕与 LinkGroup 均不变。新文件更长也不会自动延长片段；更短导致任何已有范围或转场 handle 越界时，整次替换拒绝。
+
+保留素材名称、标签、metadata、extensions 以及匹配流的 metadata/extensions；探测产生的流 metadata 同名键优先。URI、storage、availability、fingerprint、codec、index、duration 和视频/音频参数来自新文件；旧 mimeType、language 或颜色声明不会被当作新文件的信息沿用。无可靠色彩标记时可显式使用 `--color-space rec709|srgb|linear-srgb`，这不是颜色转换。
+
+默认原素材为 managed 时继续托管，其余情况使用 external；`--managed` 强制复制，`--external` 强制引用原文件，两者互斥。托管替换生成独立文件，不覆盖或删除旧素材，撤销/重做仍可使用两份文件；外部文件需由用户保留。`--dry-run` 探测并验证拟议操作，不复制素材、不写快照或历史，返回的托管 URI 仅是候选路径。结果 JSON 包含 `assetId`、`usageCount`、`event`、`project` 和 `dryRun`。
+
+普通媒体、静态图片和 `.cube` LUT 可替换，要求素材 kind 以及各类流数量一致。图片序列、字体和其他素材类型暂不支持此快捷入口，仍可通过完整领域操作编辑。只有一条同类流时自动按类型匹配，因此新文件中的音视频索引可以交换；多音轨等存在多条同类流时必须明确映射全部流：
+
+```sh
+cutcraft -p demo.cut asset info ASSET_ID
+cutcraft probe /path/to/new-multitrack.mkv
+cutcraft -p demo.cut asset replace ASSET_ID /path/to/new-multitrack.mkv \
+  --stream-map stream_v0=stream_v0 \
+  --stream-map stream_a1=stream_a2 \
+  --stream-map stream_a2=stream_a1
+```
+
+左侧是原素材的实际 Stream ID；右侧按 `probe` 的 codec_type 和 index 表示（video → `stream_vINDEX`、audio → `stream_aINDEX`、图片/封面 → `stream_iINDEX`）。映射必须完整、一对一且类型一致，不能靠数组顺序猜音轨。原 Stream ID 保留，实际解码使用新 index。需要改变流拓扑或只换某个片段时，使用独立导入及显式 `item.put`/batch。
+
+探测、哈希和复制在项目编辑锁外进行，提交时重读最新快照；目标素材或项目身份被并发替换则拒绝，其他并发编辑保留并重新校验引用。直接引用素材的锁定轨道需要显式 `--override-locks`。后台已打开项目同样通过 ApplicationHost 执行，任务期间不能关闭项目，可取消。托管文件先验证后发布，失败不留下部分工程编辑；已有素材和历史保持可恢复。
 
 ## 从素材定位使用位置
 

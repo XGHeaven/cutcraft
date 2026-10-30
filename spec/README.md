@@ -1,6 +1,6 @@
 # Cutcraft Project Specification 0.1.0
 
-当前规范修订标识：**`0.1.0-r2`**（文字字体选择）。工程的 `specVersion` 仍为 `0.1.0`；修订记录和标识规则见 [REVISIONS.md](REVISIONS.md)。
+当前规范修订标识：**`0.1.0-r3`**（文字卡片）。工程的 `specVersion` 仍为 `0.1.0`；修订记录和标识规则见 [REVISIONS.md](REVISIONS.md)。
 
 这是首个公开版本的协议，包含当前全部已定义能力：JSON 工程、精确时间、原子编辑与历史、视觉效果、动画、转场、时间重映射和图片序列。CLI 与 Spec 本次均从 `0.1.0` 起步，之后独立管理版本。
 
@@ -11,8 +11,9 @@
 - [EFFECTS.md](EFFECTS.md)：几何变换、调色、RGB 曲线、LUT 及可动画高斯模糊。
 - [ANIMATION.md](ANIMATION.md)：通用属性动画、注册槽位与转场。
 - [RETIME.md](RETIME.md)：精确时间映射、非匀速、倒放和采样政策。
+- [TEXT_CARDS.md](TEXT_CARDS.md)：文字卡片的布局、圆角、渐变、边框、描边和阴影。
 - [IMAGE_SEQUENCES.md](IMAGE_SEQUENCES.md)：图片序列来源与固定帧清单。
-- [schemas/](schemas/)：完整的 project/common/operation/event/animation/effect Schema，标识使用 `https://cutstate.dev/schema/v0.1/`，离线加载。
+- [schemas/](schemas/)：完整的 project/common/operation/event/animation/effect/text-card Schema，标识使用 `https://cutstate.dev/schema/v0.1/`，离线加载。
 
 上述专题均是本版本的规范性组成部分。效果、动画、生成器、图片序列来源及处理器自己的 `version` 独立于项目协议；现有 `1.0.0` / `2.0.0` 语义保持不变。实际 CLI 与渲染支持边界见 [实现状态](../docs/implementation.md)。
 
@@ -34,6 +35,7 @@ my-project.cut/
 ## 示例与校验
 
 - [最小工程](examples/minimal.cutcraft.json)
+- [文字卡片](examples/text-card.cutcraft.json)
 - [高斯模糊动画](examples/blur.cutcraft.json)
 - [属性动画](examples/animated.cutcraft.json)
 - [转场](examples/transition.cutcraft.json)

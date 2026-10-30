@@ -14,7 +14,7 @@
 
 - 修改持久化字段、默认值、命令或求值语义前，先定义 JSON 表示、必填/可选规则、时间单位、边界条件、错误行为及版本兼容影响，再同步规范、Schema、实现和示例。
 - **CLI 版本与协议版本独立管理。** CLI 版本在 `Cargo.toml` / `Cargo.lock`；新建工程协议版本在 `src/lib.rs`。修复渲染 bug、增加快捷命令，不自动意味着升级工程协议。
-- 规范修订标识单独记录在 [spec/REVISIONS.md](spec/REVISIONS.md)，当前为 `0.1.0-r2`。它用于追踪兼容扩展与文档修订，不写入 `specVersion` / `eventVersion` 或工程字段，也不代替组件版本、能力查询和破坏性变更所需的新协议版本。
+- 规范修订标识单独记录在 [spec/REVISIONS.md](spec/REVISIONS.md)，当前为 `0.1.0-r3`。它用于追踪兼容扩展与文档修订，不写入 `specVersion` / `eventVersion` 或工程字段，也不代替组件版本、能力查询和破坏性变更所需的新协议版本。
 - 破坏兼容性的变化必须使用新协议版本和独立 Schema；不得原地重新解释旧版本数据。共享 Schema（例如生成器参数）也要检查其对旧版本的影响。
 - 内部 0.3/0.4/0.5 快照和历史继续按各自版本读取、校验、编辑。新能力可以要求新版本，但要明确报错；不得静默升级、降级、丢字段或重建用户工程。
 - 目前没有原地升级命令。不能仅修改 `specVersion` / `$schema` 冒充迁移。以后实现迁移时，需定义原子提交、校验、历史哈希保留、ID 保留及撤销边界，并提供旧版本回归用例。
@@ -45,6 +45,7 @@
 - 生产路径通过领域 Command / Operation 修改工程，复用 `edit::apply` 和 `Store`；常用能力应提供 CLI 入口，不要求用户编写 Python 或直接改 JSON 才能完成。
 - `put` 完整替换实体；保留契约要求的扩展数据。涉及多个实体的一次编辑用 batch 原子提交，并维护引用、LinkGroup、转场 handle、轨道约束和嵌套无环等不变量。
 - 成功 Operation（含 batch）只增加一次 revision，并生成可审计 Event 和 inverseCommands；检查 baseRevision、operationId 和锁定轨道。失败不能留下部分编辑；符合契约的语义拒绝可以记录 rejected event。
+- 区间切除 `sequence cut` 由 `src/range_edit.rs` 编译为现有 `sequence.put`；明确全轨/指定轨道范围，不隐式扩展跨轨 LinkGroup。复用精确切片，无法无损表达的部分循环/淡入淡出/旧式自动化明确拒绝；标记与转场规则见 `docs/range-edits.md`。
 - `--dry-run` 不写快照或历史。Undo 是新的领域操作，不删除历史或重写旧事件的哈希。
 - 所有协作式工程读写走 `Store`，由 `.cutcraft.lock` 的 **OS 排他锁**互斥。PID 仅供诊断；不能以 PID 检查替代锁，也不能删除/替换锁文件来“解锁”。
 - 快照和历史通过 `.cutcraft/transaction.json` 耐久事务日志恢复，并原子替换文件；新增写路径不得绕过恢复、同步落盘与锁释放机制。
@@ -58,6 +59,7 @@
 - 项目磁盘缓存通过 `src/cache.rs` 管理命名空间、发布、跨进程租约、占用统计和 LRU 淘汰；功能只定义缓存键与有效性。读写期间保留租约，解码 raw/pts/ready 整组管理，暂存使用管理器的工作目录。清理走 `cache clean`（支持 `--dry-run`），保留当前素材引用、未知文件、符号链接及 `.manager/` 协调锁；自动淘汰读取最新 Store 快照，工程锁忙时暂缓。参见 [缓存管理](docs/cache.md)。
 - 图片序列导入时将 pattern、编号范围和缺帧策略解析为固定有序帧清单，保留指纹和精确帧率；之后采样不能重新扫描目录推断成员或顺序。
 - 区分“协议允许”“CLI 可编辑”“后端可渲染”。不支持的启用效果、采样方式、颜色空间或布局明确报错，不静默跳过、替换或生成看似成功的结果。
+- 文字卡片见 `spec/TEXT_CARDS.md` 与 `src/text_card.rs`；新样式仅公开0.1.0支持，旧文字路径不变。布局像素随所属序列缩放，显式多行、内容框裁切，背景/边框/阴影/描边在线性光预乘 alpha 合成，不以 FFmpeg drawtext 的彩色混合代替。
 - 颜色处理遵守声明的空间和 straight/premultiplied alpha 约定；透明度不能仅通过变量名或滤镜字符串推断正确，必须验证实际像素和合成结果。
 - 媒体进程复用 `src/media_process.rs` 的错误处理，区分缺失程序、权限错误和处理失败。使用参数数组，不拼接 shell；文字通过文本文件传入并关闭表达式展开。
 - stdout 保持最终结果 JSON；进度走 stderr，`--progress json` 使用 JSONL。进度应区分合成、解码、混音、编码等阶段，未知总量/ETA 不虚构，只有成功落盘才报告任务完成。参见 [文字与进度](docs/text-and-progress.md)。

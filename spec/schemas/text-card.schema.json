@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutstate.dev/schema/v0.1/text-card.schema.json",
+  "type": "object",
+  "properties": {
+    "widthPixels": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 4096
+    },
+    "heightPixels": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 4096
+    },
+    "paddingPixels": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2048
+    },
+    "radiusPixels": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2048
+    },
+    "background": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "solid"
+            },
+            "color": {
+              "$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"
+            }
+          },
+          "required": [
+            "type",
+            "color"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "linear-gradient"
+            },
+            "startColor": {
+              "$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"
+            },
+            "endColor": {
+              "$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"
+            },
+            "direction": {
+              "enum": [
+                "horizontal",
+                "vertical"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "startColor",
+            "endColor"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "border": {
+      "type": "object",
+      "properties": {
+        "widthPixels": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 256
+        },
+        "color": {
+          "$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"
+        }
+      },
+      "required": [
+        "widthPixels",
+        "color"
+      ],
+      "additionalProperties": false
+    },
+    "shadow": {
+      "type": "object",
+      "properties": {
+        "offsetXPixels": {
+          "type": "number",
+          "minimum": -4096,
+          "maximum": 4096
+        },
+        "offsetYPixels": {
+          "type": "number",
+          "minimum": -4096,
+          "maximum": 4096
+        },
+        "sigmaPixels": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "color": {
+          "$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"
+        }
+      },
+      "required": [
+        "color"
+      ],
+      "additionalProperties": false
+    },
+    "textStroke": {
+      "type": "object",
+      "properties": {
+        "widthPixels": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 32
+        },
+        "color": {
+          "$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"
+        }
+      },
+      "required": [
+        "widthPixels",
+        "color"
+      ],
+      "additionalProperties": false
+    },
+    "lineHeight": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 4
+    },
+    "verticalAlign": {
+      "enum": [
+        "top",
+        "center",
+        "bottom"
+      ]
+    }
+  },
+  "required": [
+    "widthPixels",
+    "heightPixels"
+  ],
+  "additionalProperties": false
+}

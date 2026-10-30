@@ -171,7 +171,7 @@ pub enum Cmd {
     },
     /// Native FFprobe information, without importing anything.
     Probe { file: PathBuf },
-    /// Search media-library records and locate their timeline uses.
+    /// Search, inspect or replace media-library assets.
     Asset {
         #[command(subcommand)]
         command: AssetCmd,
@@ -272,6 +272,10 @@ pub enum Cmd {
     },
     /// Diagnose local FFmpeg/ffprobe capabilities and media processing.
     Doctor {
+        /// Test this H.264 encoder by encoding and decoding actual frames.
+        #[arg(long, value_enum)]
+        #[serde(default)]
+        video_encoder: Option<crate::encoding::VideoEncoder>,
         /// Timeout in seconds for each external check (1-120).
         #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=120))]
         timeout: u64,
@@ -344,6 +348,9 @@ pub struct TextItemArgs {
     align: Option<String>,
     #[arg(long, value_parser = ["top", "center", "bottom"])]
     position: Option<String>,
+    #[command(flatten)]
+    #[serde(default)]
+    card: Box<CardArgs>,
 }
 impl TextItemArgs {
     fn command(self, sid: &str, caption: bool) -> Result<Value> {
@@ -372,6 +379,9 @@ impl TextItemArgs {
         if let Some(position) = self.position {
             style["position"] = json!(position);
         }
+        if let Some(card) = self.card.value()? {
+            style["card"] = card;
+        }
         let mut item = json!({"id":id("item"),"timelineRange":range(&self.start,&self.duration)?});
         if caption {
             item["type"] = json!("caption");
@@ -387,6 +397,148 @@ impl TextItemArgs {
         Ok(json!({"type":"item.put","sequenceId":sid,"trackId":self.track,"item":item}))
     }
 }
+#[derive(Clone, Debug, Default, Args, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CardArgs {
+    #[arg(long, requires = "card_height")]
+    card_width: Option<f64>,
+    #[arg(long, requires = "card_width")]
+    card_height: Option<f64>,
+    #[arg(long, requires = "card_width")]
+    card_padding: Option<f64>,
+    #[arg(long, requires = "card_width")]
+    card_radius: Option<f64>,
+    #[arg(long, requires = "card_width", conflicts_with = "card_gradient_start")]
+    card_color: Option<String>,
+    #[arg(long, requires_all = ["card_width", "card_gradient_end"])]
+    card_gradient_start: Option<String>,
+    #[arg(long, requires = "card_gradient_start")]
+    card_gradient_end: Option<String>,
+    #[arg(long, requires = "card_gradient_start", value_parser = ["horizontal", "vertical"])]
+    card_gradient_direction: Option<String>,
+    #[arg(long, requires = "card_width")]
+    card_border_width: Option<f64>,
+    #[arg(long, requires = "card_border_width")]
+    card_border_color: Option<String>,
+    #[arg(long, requires = "card_width")]
+    card_shadow_color: Option<String>,
+    #[arg(long, requires = "card_shadow_color", allow_hyphen_values = true)]
+    card_shadow_x: Option<f64>,
+    #[arg(long, requires = "card_shadow_color", allow_hyphen_values = true)]
+    card_shadow_y: Option<f64>,
+    #[arg(long, requires = "card_shadow_color")]
+    card_shadow_blur: Option<f64>,
+    #[arg(long, requires = "card_width")]
+    text_stroke_width: Option<f64>,
+    #[arg(long, requires = "text_stroke_width")]
+    text_stroke_color: Option<String>,
+    #[arg(long, requires = "card_width")]
+    line_height: Option<f64>,
+    #[arg(long, requires = "card_width", value_parser = ["top", "center", "bottom"])]
+    vertical_align: Option<String>,
+}
+impl CardArgs {
+    fn value(&self) -> Result<Option<Value>> {
+        ensure!(
+            [
+                self.card_width,
+                self.card_height,
+                self.card_padding,
+                self.card_radius,
+                self.card_border_width,
+                self.card_shadow_x,
+                self.card_shadow_y,
+                self.card_shadow_blur,
+                self.text_stroke_width,
+                self.line_height
+            ]
+            .into_iter()
+            .flatten()
+            .all(f64::is_finite),
+            "TEXT_CARD_INVALID: finite numbers required"
+        );
+        let supplied = serde_json::to_value(self)?;
+        if supplied.as_object().unwrap().values().all(Value::is_null) {
+            return Ok(None);
+        }
+        let width = self
+            .card_width
+            .context("TEXT_CARD_INVALID: --card-width required")?;
+        let height = self
+            .card_height
+            .context("TEXT_CARD_INVALID: --card-height required")?;
+        ensure!(
+            self.card_color.is_none() || self.card_gradient_start.is_none(),
+            "TEXT_CARD_INVALID: solid and gradient conflict"
+        );
+        ensure!(
+            self.card_gradient_start.is_some() == self.card_gradient_end.is_some(),
+            "TEXT_CARD_INVALID: gradient requires both colors"
+        );
+        ensure!(
+            self.card_gradient_direction.is_none() || self.card_gradient_start.is_some(),
+            "TEXT_CARD_INVALID: gradient direction needs colors"
+        );
+        ensure!(
+            self.card_border_color.is_none() || self.card_border_width.is_some(),
+            "TEXT_CARD_INVALID: border color needs width"
+        );
+        ensure!(
+            self.text_stroke_color.is_none() || self.text_stroke_width.is_some(),
+            "TEXT_CARD_INVALID: stroke color needs width"
+        );
+        ensure!(
+            (self.card_shadow_x.is_none()
+                && self.card_shadow_y.is_none()
+                && self.card_shadow_blur.is_none())
+                || self.card_shadow_color.is_some(),
+            "TEXT_CARD_INVALID: shadow needs color"
+        );
+        let mut card = json!({"widthPixels":width,"heightPixels":height});
+        for (key, value) in [
+            ("paddingPixels", self.card_padding),
+            ("radiusPixels", self.card_radius),
+            ("lineHeight", self.line_height),
+        ] {
+            if let Some(v) = value {
+                card[key] = json!(v);
+            }
+        }
+        if let Some(v) = &self.vertical_align {
+            card["verticalAlign"] = json!(v);
+        }
+        if let Some(v) = &self.card_color {
+            card["background"] = json!({"type":"solid","color":color(v)?});
+        }
+        if let (Some(a), Some(b)) = (&self.card_gradient_start, &self.card_gradient_end) {
+            card["background"] = json!({"type":"linear-gradient","startColor":color(a)?,"endColor":color(b)?,"direction":self.card_gradient_direction.as_deref().unwrap_or("horizontal")});
+        }
+        for (key, width, c, default) in [
+            (
+                "border",
+                self.card_border_width,
+                &self.card_border_color,
+                "#ffffff",
+            ),
+            (
+                "textStroke",
+                self.text_stroke_width,
+                &self.text_stroke_color,
+                "#000000",
+            ),
+        ] {
+            if let Some(w) = width {
+                card[key] =
+                    json!({"widthPixels":w,"color":color(c.as_deref().unwrap_or(default))?});
+            }
+        }
+        if let Some(c) = &self.card_shadow_color {
+            card["shadow"] = json!({"color":color(c)?,"offsetXPixels":self.card_shadow_x.unwrap_or(0.),"offsetYPixels":self.card_shadow_y.unwrap_or(0.),"sigmaPixels":self.card_shadow_blur.unwrap_or(0.)});
+        }
+        crate::schema::validate("text-card", &card)?;
+        Ok(Some(card))
+    }
+}
 #[derive(Clone, Copy, Debug, ValueEnum, Serialize, Deserialize)]
 pub enum Kind {
     Project,
@@ -394,6 +546,7 @@ pub enum Kind {
     Event,
     Common,
     Generator,
+    TextCard,
     Effect,
     Animation,
 }
@@ -405,6 +558,7 @@ impl Kind {
             Self::Event => "event",
             Self::Common => "common",
             Self::Generator => "generator",
+            Self::TextCard => "text-card",
             Self::Effect => "effect",
             Self::Animation => "animation",
         }
@@ -418,6 +572,23 @@ pub enum Level {
 }
 #[derive(Clone, Debug, Subcommand, Serialize, Deserialize)]
 pub enum AssetCmd {
+    /// Replace a file asset for all its uses, preserving asset and stream IDs.
+    Replace {
+        asset: String,
+        file: PathBuf,
+        /// Copy the new file into assets/; default inherits the old storage mode.
+        #[arg(long, conflicts_with = "external")]
+        managed: bool,
+        /// Reference the new file in place instead of copying it.
+        #[arg(long, conflicts_with = "managed")]
+        external: bool,
+        #[arg(long, value_parser=["rec709", "srgb", "linear-srgb"])]
+        color_space: Option<String>,
+        /// Complete old-to-new stream mapping; repeat for each stream. New IDs come from probe.
+        #[arg(long, value_name = "OLD=NEW")]
+        #[serde(default)]
+        stream_map: Vec<String>,
+    },
     /// List/search assets by case-insensitive literal substring; filters combine with AND.
     #[command(visible_alias = "search")]
     List {
@@ -457,6 +628,24 @@ pub enum AssetCmd {
 }
 #[derive(Clone, Debug, Subcommand, Serialize, Deserialize)]
 pub enum SequenceCmd {
+    /// Remove an exact interval from all or explicitly selected tracks.
+    Cut {
+        #[arg(long)]
+        sequence: Option<String>,
+        #[arg(long)]
+        start: Time,
+        #[arg(long)]
+        duration: Time,
+        #[arg(long, required_unless_present = "track", conflicts_with = "track")]
+        all_tracks: bool,
+        #[arg(long, value_name = "TRACK_ID", required_unless_present = "all_tracks")]
+        track: Vec<String>,
+        #[arg(long, default_value="remove-gap", value_parser=["none","remove-gap"])]
+        ripple: String,
+        /// Auto cuts sequence markers only when every track is selected.
+        #[arg(long, default_value="auto", value_parser=["auto","cut","keep"])]
+        markers: String,
+    },
     /// List all sequences, optionally filtering by ID/name substring.
     List { query: Option<String> },
     /// Locate parent timeline items that embed this sequence.
@@ -840,7 +1029,11 @@ pub fn prepare(mut cli: Cli) -> Result<Cli> {
                 capture(file)?;
             }
         }
-        Cmd::Import { file, .. } | Cmd::Probe { file } => absolute(file),
+        Cmd::Import { file, .. }
+        | Cmd::Probe { file }
+        | Cmd::Asset {
+            command: AssetCmd::Replace { file, .. },
+        } => absolute(file),
         Cmd::ImportSequence {
             directory, files, ..
         } => {
@@ -856,6 +1049,7 @@ pub fn prepare(mut cli: Cli) -> Result<Cli> {
         Cmd::Item { command } => match command {
             ItemCmd::Animate { file, .. } | ItemCmd::TimeMap { file, .. } => capture(file)?,
             ItemCmd::Caption(args) | ItemCmd::Text(args) => {
+                args.card.value()?;
                 if let Some(file) = args.text_file.take() {
                     args.text = Some(
                         std::fs::read_to_string(&file)
@@ -921,6 +1115,46 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
         Cmd::Serve { host } => {
             crate::daemon::serve(host)?;
             return Ok(json!({"ok":true}));
+        }
+        Cmd::Asset {
+            command:
+                AssetCmd::Replace {
+                    asset,
+                    file,
+                    managed,
+                    external,
+                    color_space,
+                    stream_map,
+                },
+        } => {
+            ensure!(
+                !(managed && external),
+                "--managed and --external are mutually exclusive"
+            );
+            let store = open_store(&cli.project)?;
+            let project = store.project()?;
+            let dir = store.dir.clone();
+            drop(store);
+            let prepared = media::prepare_replace(
+                &project,
+                &dir,
+                &asset,
+                &file,
+                &media::ReplaceOptions {
+                    managed: if managed {
+                        Some(true)
+                    } else if external {
+                        Some(false)
+                    } else {
+                        None
+                    },
+                    color_space: color_space.as_deref(),
+                    stream_map: &stream_map,
+                    dry_run: dry,
+                },
+            )?;
+            let store = open_store(&dir)?;
+            return media::commit_replace(&store, prepared, override_locks);
         }
         Cmd::Import {
             file,
@@ -1017,7 +1251,10 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
         }
         Cmd::Id { prefix } => return Ok(json!({"id":id(&prefix)})),
         Cmd::Capabilities => return Ok(render::capabilities()),
-        Cmd::Doctor { timeout } => return crate::doctor::run(timeout),
+        Cmd::Doctor {
+            timeout,
+            video_encoder,
+        } => return crate::doctor::run_with_encoder(timeout, video_encoder),
         Cmd::Schema { kind } => {
             return Ok(serde_json::from_str(
                 schema::SCHEMAS
@@ -1075,7 +1312,7 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
                             .unwrap_or(Time::zero());
                         crate::animation::validate(&value, &duration)?;
                     }
-                    Kind::Common | Kind::Generator | Kind::Effect => {}
+                    Kind::Common | Kind::Generator | Kind::TextCard | Kind::Effect => {}
                 }
             }
             if matches!(level, Level::Media) {
@@ -1119,7 +1356,20 @@ fn execute_inner(cli: Cli, reporter: Option<&crate::progress::Progress>) -> Resu
                 AssetCmd::Info{asset,summary}=>query::asset_info_summary(&p,&store.dir,&asset,summary),
                 AssetCmd::Frames{asset,offset,limit}=>query::asset_frames(&p,&store.dir,&asset,offset,limit),
                 AssetCmd::Usages{asset}=>query::asset_usages(&p,&asset),
+                AssetCmd::Replace{..}=>unreachable!("replacement handled before opening the editing lock"),
             }
+        },
+        Cmd::Sequence{command:SequenceCmd::Cut{sequence:s,start,duration,all_tracks,track,ripple,markers}}=>{
+            let p=store.project()?;
+            let sid=sequence(&p,s);
+            let plan=crate::range_edit::cut(&p,&sid,&crate::range_edit::CutOptions{
+                start:&start,duration:&duration,all_tracks,tracks:&track,ripple:&ripple,markers:&markers,
+            })?;
+            let mut operation=edit::operation(&p,plan.command);
+            operation["metadata"]=json!({"cutcraft.rangeEdit":plan.summary});
+            let mut result=store.apply(&operation,override_locks,dry)?;
+            result["cut"]=plan.summary;
+            Ok(result)
         },
         Cmd::Sequence{command:SequenceCmd::List{query}}=>Ok(query::sequences(&store.project()?,query.as_deref())),
         Cmd::Sequence{command:SequenceCmd::Usages{sequence}}=>query::sequence_usages(&store.project()?,&sequence),

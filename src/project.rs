@@ -405,6 +405,11 @@ pub fn validate(project: &Value) -> Result<()> {
                 }
                 if let Some(style) = crate::fonts::style(item) {
                     crate::fonts::validate_style(style)?;
+                    crate::text_card::validate(
+                        text(&project["specVersion"]),
+                        style,
+                        crate::fonts::content(item),
+                    )?;
                     if let Some(font) = style["fontAssetId"].as_str() {
                         ensure!(
                             assets.get(font).is_some_and(|a| a["kind"] == "font"),

@@ -1043,6 +1043,9 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 10
+        },
+        "card": {
+          "$ref": "text-card.schema.json"
         }
       },
       "additionalProperties": false

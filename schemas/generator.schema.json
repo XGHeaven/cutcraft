@@ -37,7 +37,8 @@
               "fontSizePixels": {"type": "number", "exclusiveMinimum": 0, "maximum": 4096},
               "color": {"$ref": "https://cutstate.dev/schema/v0.1/common.schema.json#/$defs/color"},
               "align": {"enum": ["left", "center", "right"]},
-              "position": {"enum": ["top", "center", "bottom"]}
+              "position": {"enum": ["top", "center", "bottom"]},
+              "card": {"$ref": "https://cutstate.dev/schema/v0.1/text-card.schema.json"}
             },
             "additionalProperties": false
           }

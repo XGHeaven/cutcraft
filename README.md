@@ -152,6 +152,7 @@ cutcraft -p my-film.cut asset search '喜字'
 cutcraft -p my-film.cut asset search --name 'IMG_' --path '云南'
 cutcraft -p my-film.cut asset info ASSET_ID
 cutcraft -p my-film.cut asset usages ASSET_ID
+cutcraft -p my-film.cut asset replace ASSET_ID /path/to/new-media.mp4
 cutcraft -p my-film.cut item list --asset ASSET_ID
 cutcraft -p my-film.cut item search '片头'
 cutcraft -p my-film.cut item list --sequence SEQUENCE_ID --at 3/2
@@ -161,7 +162,11 @@ cutcraft -p my-film.cut track list --sequence SEQUENCE_ID
 cutcraft -p my-film.cut sequence usages CHILD_SEQUENCE_ID
 ```
 
+`asset replace` 为所有引用替换素材，保留素材/流 ID 和时间线剪辑，重新探测文件并更新指纹。默认沿用托管方式，支持 `--managed` / `--external`、`--dry-run` 和撤销；新文件太短、类型不兼容或流匹配有歧义时拒绝。详见[素材替换](docs/search-and-locate.md#素材替换)。
+
 支持中文/带空格路径、素材类型/标签/未使用筛选、媒体/LUT/字体引用追踪。查询只读，时间始终属于返回的序列；完整匹配规则和嵌套定位说明见 [搜索与定位](docs/search-and-locate.md)。
+
+跨轨道区间切除使用 `sequence cut --start 2 --duration 3 --all-tracks`；部分轨道用可重复的 `--track ID`。默认收拢后续内容，`--ripple none` 保留空隙，支持 `--dry-run` 与一次撤销。关联组、转场、标记和变速边界见[区间切除](docs/range-edits.md)。
 
 所有规范中的 19 种非 batch 命令均可通过 `command` / `apply` 使用：
 
@@ -224,6 +229,8 @@ cutcraft -p my-film.cut validate --level media
 
 不带选项的 `preview` 导出当前 revision 的低分辨率 MP4，路径通过 JSON 的 `video` / `output` 返回，文件位于项目的 `cache/` 下。最长边限制为 640 像素，最高 24 fps；较小素材不放大，较低帧率保持原值，尺寸取偶数以兼容 H.264。素材解码、特效合成和嵌套序列均使用缩小的画布，默认编码采用 libx264 ultrafast / CRF 28，音频采样率最高 24 kHz。重新运行会重新生成整段序列预览；不再生成 HTML，也不再提供 `--open`。项目格式和正式 `render` 导出参数不变。新增 `preview --at` 导出 PNG，`--start/--duration` 导出带音频的区间 MP4，`--scale` 控制分辨率，复用网页预览引擎；`--sheet` 生成带时间标注的缩略图总览，`--boundaries` 检查片段起止点前后帧，见[预览与画面检查](docs/preview.md)。默认系统字体依赖机器环境；需要固定字幕字体时使用 `style.fontAssetId`。输出像素的可复现性还取决于 FFmpeg、字体和编码配置版本。
 
+标题和字幕可配置原生文字卡片：圆角、背景渐变、边框、阴影、文字描边、多行对齐与行高；使用 `item text|caption --card-width ... --card-height ...`，见[文字卡片](docs/text-cards.md)。支持公开 Spec 0.1.0，不启用自动换行。
+
 正式导出和 MP4 预览现已使用流式编码：合成视频、混合音频时就将数据送入 FFmpeg，减少整条合成结果的临时磁盘读写；命令用法不变，成片仍成功后原子发布。原理与边界见[流式导出](docs/streaming-export.md)。 `render` 和 MP4 `preview` 可加 `--video-encoder h264_videotoolbox|h264_nvenc|h264_qsv` 选择硬件编码，默认 `libx264`；`--video-bitrate 8000000` 设置目标码率（bits/s）。指定硬件不可用时明确失败；解码和合成仍使用 CPU。
 
 缓存由统一管理器维护，支持跨进程占用保护和按最近使用顺序淘汰。用 `cutcraft -p PROJECT cache status` 查看占用，`cache clean --dry-run` 预览可回收内容，`cache clean` 执行清理；素材、使用中的缓存与未知文件会保留。默认每工程 1 GiB 总预算，详细策略见[缓存管理](docs/cache.md)。
@@ -246,3 +253,5 @@ cargo fmt --check
 CLI 0.1.0 支持视觉处理：偏移/缩放/旋转/裁剪、调色、RGB 曲线及 LUT/.cube。使用方式见 [视觉效果操作](docs/visual-effects.md)。
 
 CLI 0.1.0 提供 `item animate`、`item speed`、`item time-map`、`transition`。完整示例和渲染边界见 [动画与时间映射指南](docs/animation-and-retime.md)。
+
+硬件编码可用 `cutcraft doctor --video-encoder h264_videotoolbox` 实际诊断（也可指定 libx264/NVENC/QSV）；会编码、探测并解码核对测试帧，设备不可用明确失败。见[诊断说明](docs/doctor.md)。

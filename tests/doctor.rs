@@ -194,3 +194,67 @@ esac"#,
     assert_eq!(check(&value, "smoke.mp4")["status"], "failed");
     assert_eq!(check(&value, "smoke.probe")["status"], "skipped");
 }
+
+#[test]
+fn selected_encoder_is_encoded_probed_and_pixel_checked() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut names = vec!["libx264".to_owned()];
+    if let Ok(name) = std::env::var("CUTCRAFT_TEST_VIDEO_ENCODER") {
+        names.push(name);
+    }
+    for name in names {
+        let value = report(invoke(tmp.path(), None, &["--video-encoder", &name]), true);
+        assert_eq!(value["selectedVideoEncoder"], name);
+        for id in ["encoder.encode", "encoder.probe", "encoder.decode"] {
+            assert_eq!(check(&value, id)["status"], "passed", "{value}");
+        }
+    }
+    assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn advertised_encoder_with_broken_device_or_timeout_is_not_available() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("bin");
+    fs::create_dir(&path).unwrap();
+    script(&path, "ffprobe", "echo 'ffprobe version 7.1'", 0o755);
+    for fail in [
+        "echo 'NVENC device unavailable' >&2; exit 1",
+        "while :; do :; done",
+    ] {
+        let body = format!(
+            r#"case "$*" in
+'-version') echo 'ffmpeg version 7.1';;
+'-hide_banner -encoders') printf ' V..... libx264\n A..... aac\n V..... ffv1\n V..... png\n A..... pcm_f32le\n V..... h264_nvenc\n';;
+'-hide_banner -h full') echo '-filter_complex_script filename';;
+*h264_nvenc*) {fail};;
+*) exit 1;;
+esac"#
+        );
+        script(&path, "ffmpeg", &body, 0o755);
+        let value = report(
+            invoke(
+                tmp.path(),
+                Some(&path),
+                &["--video-encoder", "h264_nvenc", "--timeout", "1"],
+            ),
+            false,
+        );
+        assert_eq!(check(&value, "ffmpeg.encoders")["status"], "passed");
+        assert_eq!(check(&value, "encoder.encode")["status"], "failed");
+        assert_eq!(
+            check(&value, "encoder.encode")["videoEncoder"],
+            "h264_nvenc"
+        );
+        assert_eq!(
+            check(&value, "encoder.encode")["code"],
+            if fail.starts_with("while") {
+                "MEDIA_TOOL_TIMEOUT"
+            } else {
+                "MEDIA_PROCESS_FAILED"
+            }
+        );
+        assert_eq!(check(&value, "encoder.decode")["status"], "skipped");
+    }
+}

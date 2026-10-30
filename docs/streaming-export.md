@@ -34,7 +34,7 @@ cutcraft -p film.cut render --video-encoder h264_qsv
 
 ApplicationHost 请求中的可选 `encoding` 对象形如 `{"video_encoder":"h264_videotoolbox","video_bitrate":8000000}`；省略对象/字段使用默认值，码率可为 null，未知编码器、未知字段和超范围码率拒绝。它属于运行时命令配置，不是工程或 Operation/Event 字段。
 
-结果 JSON 的 `encoding` 返回 `videoEncoder`、有效 `videoBitrate`、`rateControl` 和 `crf`；MP4 预览缓存键包含编码配置。`capabilities` 列出的编码器是适配范围，不代表本机可用性；`doctor` 仍检查默认软件链路，不能据此认定硬件可用。
+结果 JSON 的 `encoding` 返回 `videoEncoder`、有效 `videoBitrate`、`rateControl` 和 `crf`；MP4 预览缓存键包含编码配置。`capabilities` 列出的编码器是适配范围，不代表本机可用性；不带参数的 `doctor` 只检查默认软件链路；用 `doctor --video-encoder h264_videotoolbox`（或指定其他编码器）实测硬件编码与解码像素。
 
 图片预览（`--at`、`--sheet`、`--boundaries`）拒绝非默认视频编码配置。网页交互 HLS 播放维持 `libx264`；本次不新增网页设置、自动选择编码器、硬件解码或 GPU 合成。
 

@@ -12,12 +12,12 @@ Operate the installed Rust CLI to create a reviewable project and the requested 
 | User task | Implemented tools | Details to read when needed |
 | --- | --- | --- |
 | Open a shared browser editing session | open/close, history undo/redo; modal workflows and adjustable preview resolution; CLI routes only opened projects | [Editing guide: local collaboration](references/editing-guide.md#本机共同编辑) |
-| Diagnose FFmpeg/ffprobe setup | doctor (versions, components, media smoke tests, per-check timeout) | [Editing guide: environment diagnostics](references/editing-guide.md#环境诊断) |
-| Set up or inspect a project; organize assets | init, inspect, probe, import, project/asset commands | [Editing guide: projects and media](references/editing-guide.md#projects-and-media) |
+| Diagnose FFmpeg/ffprobe setup | doctor (versions, components, media smoke tests, optional --video-encoder device test, per-check timeout) | [Editing guide: environment diagnostics](references/editing-guide.md#环境诊断) |
+| Set up or inspect a project; organize assets | init, inspect, probe, import, asset replace, project/asset commands | [Editing guide: projects and media](references/editing-guide.md#projects-and-media) |
 | Find an asset or locate its timeline uses | asset search/list/info/usages; item search/list/info; sequence/track list; sequence usages | [Editing guide: search and locate](references/editing-guide.md#search-and-locate) |
 | Assemble clips and manage layers | sequence/track creation; item add/move/trim/split/remove; ripple and A/V links | [Editing guide: sequences, tracks and cuts](references/editing-guide.md#sequences-tracks-and-cuts) |
 | Add music, mix sound or silence clips | Audio items, gain, pan, fades, mute/solo; silence generator | [Editing guide: audio](references/editing-guide.md#audio) |
-| Add captions, titles, images or backgrounds | Caption items, text/color generators, image media, transforms | [Editing guide: text, images and backgrounds](references/editing-guide.md#text-images-and-backgrounds) |
+| Add captions, titles, images or backgrounds | Caption/title cards with rounded fills, gradients, borders, shadows and multiline layout; images/transforms | [Editing guide: text, images and backgrounds](references/editing-guide.md#text-images-and-backgrounds) |
 | Create a blurred background behind a sharp subject | Reuse visual media on a lower track, cover-scale it, then apply gaussian-blur | [Best practice: blurred backgrounds](references/motion-and-effects.md#模糊背景最佳实践) |
 | Zoom into a region of a screen recording | Transform scale/position/anchor; property animation for zooming and panning | [Best practice: screen-recording zooms](references/motion-and-effects.md#录屏区域放大最佳实践) |
 | Import numbered or ordered image frames as video | import-sequence, asset frames, sample; video item editing and rendering | [Image sequence guide](references/image-sequences.md) |
@@ -38,7 +38,7 @@ Read only the references relevant to the task. Some capabilities have dedicated 
 - For Unix CLI removal, run the same installer with `--uninstall` (pipe suffix `sh -s -- --uninstall`); reuse `--bin-dir DIR` for a custom installation. It removes only the selected CLI file, succeeds if absent, and preserves projects, media, caches, dependencies and skills. No Release download is needed. Unrecognized files/symlinks require explicit `--force`; link targets and directories are never removed. Do not combine uninstall with installation source/version options.
 - On Windows x64 use `https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.ps1` with PowerShell 5.1/7; options are `-Repo`, `-Version`, `-BinDir`, `-Force`. Default destination is `%LOCALAPPDATA%\Cutcraft\bin`. Check that the selected Release actually contains the Windows ZIP or Linux ARM archive; these targets were added in the v0.1.0 cross-platform re-release. Never substitute another CPU architecture. Windows needs `ffmpeg.exe` and `ffprobe.exe` in PATH; install the skill with the same `npx skills add` command, or copy its directory for offline installation.
 - For Chinese text on macOS, pass `--font-family "PingFang SC"` to `item text` or `item caption`; a PostScript face name such as `PingFangSC-Semibold` selects a specific weight. Do not guess a system font file path or extract only some TTC tables. Missing explicit fonts/glyphs are errors, not permission to silently substitute another font. Pinned font assets remain the portable option.
-- Read `cutcraft --version` and `cutcraft capabilities`. Use subcommand `--help` and `cutcraft schema project|operation|effect|animation|generator` for the installed contract. Do not guess flags or plugin availability.
+- Read `cutcraft --version` and `cutcraft capabilities`. Use subcommand `--help` and `cutcraft schema project|operation|effect|animation|generator|text-card` for the installed contract. Do not guess flags or plugin availability.
 - Honor the user's project/output location. For an existing project, inspect it first. For a new edit, create a new `.cut` project directory at the agreed location, not inside the skill installation or arbitrarily inside the source checkout.
 - New snapshots are `cutcraft.json`. Do not silently rename legacy `project.json`, change specVersion, or recreate an existing project. Internal 0.3/0.4/0.5 projects retain compatibility. Image sequences require Spec 0.1.0 or internal 0.5.0; create a separate 0.1.0 project when using 0.3/0.4. No in-place upgrade command is installed.
 
@@ -62,6 +62,8 @@ cutcraft -p "$project" item add --track "$track_id" --asset "$asset_id" --stream
 cutcraft -p "$project" item split "$item_id" --at 3/2
 cutcraft -p "$project" item transform "$item_id" --scale-x 1.2 --scale-y 1.2
 ```
+
+For interval removal across tracks, use `sequence cut --start TIME --duration TIME --all-tracks` or repeat `--track ID` for a subset. Default ripple closes the interval; `--ripple none` keeps the gap. Use `--dry-run` to inspect the returned `cut` summary and project, then execute within the user's authorization. See [range cut rules](references/editing-guide.md#range-cuts) for links, transitions, markers and unsupported slices.
 
 Timeline positions, including split `--at`, are sequence times. Animation offsets are local to their owner. CLI times accept seconds, decimal seconds and fractions; stored times are reduced `{num,den}` rational seconds, not frame counts or SMPTE strings.
 
@@ -96,4 +98,4 @@ For long renders/previews, use `--progress json` and consume stderr JSONL while 
 
 高斯模糊使用 `item effect --kind gaussian-blur`，支持 sigma 动画，见 motion-and-effects；快速检查使用 `preview --at` 或 `--start/--duration`，见 editing-guide。
 
-For optional hardware H.264 encoding, use `render` or MP4 `preview` with `--video-encoder h264_videotoolbox|h264_nvenc|h264_qsv`; default is `libx264`. `--video-bitrate` takes integer bits/s. Check [encoding details](references/editing-guide.md) for defaults and scope; `doctor` success does not prove hardware availability.
+For optional hardware H.264 encoding, use `render` or MP4 `preview` with `--video-encoder h264_videotoolbox|h264_nvenc|h264_qsv`; default is `libx264`. `--video-bitrate` takes integer bits/s. Check [encoding details](references/editing-guide.md) for defaults and scope; plain `doctor` success does not prove hardware availability; use `doctor --video-encoder NAME` for an actual device encode/probe/decode check.

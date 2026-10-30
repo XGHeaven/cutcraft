@@ -5,12 +5,14 @@ pub enum Capability {
     ImageSequences,
     InteractivePreview,
     GaussianBlur,
+    TextCards,
 }
 
 pub fn versions(capability: Capability) -> &'static [&'static str] {
     match capability {
         Capability::ImageSequences => &["0.1.0", "0.5.0"],
         Capability::InteractivePreview => &["0.1.0", "0.4.0", "0.5.0"],
+        Capability::TextCards => &["0.1.0"],
         Capability::GaussianBlur => &["0.1.0"],
     }
 }

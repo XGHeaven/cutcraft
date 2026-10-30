@@ -3,6 +3,7 @@
 ```sh
 cutcraft doctor
 cutcraft doctor --timeout 20
+cutcraft doctor --video-encoder h264_videotoolbox
 ```
 
 `doctor` 无需工程，总是在当前 CLI 进程执行，不转发到已打开工程的编辑器服务。它通过与媒体命令相同的可执行文件查找方式启动 `ffmpeg` / `ffprobe`，不下载、安装或修改环境。修改 PATH 后需重启已经运行的编辑器服务，当前 CLI 的诊断不能代表旧服务进程的环境。
@@ -20,3 +21,11 @@ stdout 始终输出一份诊断 JSON，包含 `ok`、CLI 版本、平台、检�
 `--timeout` 是每个外部检查的超时秒数，默认 10，范围 1–120。超时停止并回收进程，报告 `MEDIA_TOOL_TIMEOUT`。不同检查分别计时，不代表整次诊断的总时限。
 
 此功能验证当前基础媒体路径，不保证所有素材编码、字体字形、硬件加速或项目内容都能渲染。检查文字时使用 FFmpeg 默认字体；指定苹方等字体的具体项目仍应执行 `validate --level media` 和预览。
+
+## 指定硬件编码器实测
+
+`--video-encoder libx264|h264_videotoolbox|h264_nvenc|h264_qsv` 在基础诊断后增加三个必需检查：`encoder.encode` 使用与导出共用的编码参数，将红/蓝两帧编码为 H.264；`encoder.probe` 验证 128×96 尺寸与两帧；`encoder.decode` 检查实际解码帧数与像素。每项仍受 `--timeout` 限制，所有临时素材在系统临时目录中清理。
+
+报告包含 `selectedVideoEncoder`，编码检查包含有效编码设置。指定设备不可用、驱动故障、编码器缺失或超时均报告失败并退出1；后续依赖检查标为 skipped，不会自动改用 libx264。FFmpeg 的 `-encoders` 列表只能证明构建中包含适配器，不能代替此实测。省略参数仍只检查默认软件路径，不要求机器具备所有厂商的硬件。
+
+这是一组小尺寸烟测，通过不代表设备支持任意分辨率、码率、并发会话或硬件解码。网页服务如需使用更新后的环境，应重新启动。

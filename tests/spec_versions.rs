@@ -10,6 +10,7 @@ fn load(path: &str) -> Value {
 fn public_examples_and_history_are_a_replayable_contract() {
     for name in [
         "minimal",
+        "text-card",
         "animated",
         "blur",
         "transition",

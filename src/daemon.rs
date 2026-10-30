@@ -1170,7 +1170,11 @@ async fn history_action(
 fn command_kind(cli: &app::Cli) -> &'static str {
     match &cli.command {
         app::Cmd::Render { .. } | app::Cmd::Preview { .. } => "render",
-        app::Cmd::Import { .. } | app::Cmd::ImportSequence { .. } => "import",
+        app::Cmd::Import { .. }
+        | app::Cmd::ImportSequence { .. }
+        | app::Cmd::Asset {
+            command: app::AssetCmd::Replace { .. },
+        } => "import",
         _ => "command",
     }
 }

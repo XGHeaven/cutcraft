@@ -589,7 +589,7 @@ fn ripple_shift_once(
 }
 /// Slice fit-mapped media exactly. Complex looping/automation cannot be losslessly
 /// represented by the v0.3.0 Item schema after an arbitrary cut, so reject explicitly.
-fn slice(item: &Value, start: &Time, end: &Time, new_id: &str) -> Result<Value> {
+pub(crate) fn slice(item: &Value, start: &Time, end: &Time, new_id: &str) -> Result<Value> {
     let (old_start, old_end) = bounds(&item["timelineRange"])?;
     ensure!(
         start >= &old_start && end <= &old_end && end > start,

@@ -17,6 +17,7 @@ Cutcraft 0.1.0 creates Spec 0.1.0 projects using `spec/schemas/`. This is the fi
 | Semantic validation | Global IDs, graph cycles, kinds, bounds, overlap, links, crop, words, automation, handles | Custom effect/generator semantics are plugin-defined |
 | Media validation | Paths, fingerprint, stream kind/index, actual source bounds, built-in parameter Schemas, unavailable-plugin rejection | Remote sources and general plugin loading are unsupported; explicit system-font names and pinned fonts are checked for missing glyphs |
 | Search and locate | Asset name/path/tag filters; media/LUT/font usage lookup; item/track/sequence discovery and parent-sequence references | Snapshot queries only; local sequence times; no opaque plugin-reference inference or content recognition. See [search and locate](search-and-locate.md). |
+| Text cards | Optional title/caption card, rounded backgrounds, linear gradients, inside borders, shadows, glyph strokes, explicit multiline layout | Public 0.1.0 only; static card fields, clipped overflow, no automatic wrapping or HTML/SVG. See [text cards](text-cards.md). |
 | Preview/export | Streaming MP4 preview/export with concurrent video/audio production and encoding; CLI PNG/interval MP4, thumbnail sheets and boundary frame pairs using the interactive engine; local editor PNG frames and fMP4/MSE playback with continuous resolution scale | CPU rendering; buffering is possible; interactive preview requires public 0.1.0 or internal 0.4/0.5 |
 | Cache management | Shared disk cache manager, LRU budgets, cross-process leases, grouped decode windows, staging recovery, `cache status/clean` | 1 GiB project target; active entries and current asset references may exceed limits; unknown files and symlinks are preserved. See [cache management](cache.md). |
 | Local editor | `open` / `close`, shared ApplicationHost, project-scoped CLI routing, SSE refresh, jobs, shared undo/redo | Loopback only; close refuses busy imports/exports; no cloud collaboration or GPU promise |
@@ -67,7 +68,7 @@ The draft names ripple modes without fully defining their scope. Cutcraft uses t
 | Remove + `remove-gap` | Close removed intervals on affected tracks |
 | `overwrite` | Intersect competing destination-track ranges, retaining left/right source-mapped slices or deleting fully covered items |
 
-Followers' LinkGroups move together, once per operation. Ripple does not move sequence markers. Clips straddling an insertion boundary are not implicitly split; if the resulting state violates overlap policy the operation fails. Overwrite rejects linked or transition-connected competitors rather than leaving their synchronization or handles ambiguous. Item removal accepts only `none` and `remove-gap`.
+Followers' LinkGroups move together, once per operation. These item-level ripple commands do not move sequence markers. Clips straddling an insertion boundary are not implicitly split; if the resulting state violates overlap policy the operation fails. Overwrite rejects linked or transition-connected competitors rather than leaving their synchronization or handles ambiguous. Item removal accepts only `none` and `remove-gap`.
 
 ## Legacy 0.3 FFmpeg profile
 
@@ -117,3 +118,13 @@ Titles and captions accept `--font-family` (stored as `fontFamily`), including `
 `cutcraft doctor` runs outside project routing and reports FFmpeg/ffprobe launch/version checks, required encoder/filter availability, file-based graph support, and temporary PNG/FFV1/MP4 encoding plus MP4 probing/video/audio decoding. Per-check timeout defaults to 10 seconds (`--timeout 1..120`). Failed checks return a complete stdout JSON report with process exit 1; no project is opened or modified. This diagnoses the current CLI environment, not a previously started editor service or every possible source codec. See [doctor](doctor.md).
 
 Export and MP4 previews accept `--video-encoder libx264|h264_videotoolbox|h264_nvenc|h264_qsv` and integer `--video-bitrate` (bits/s). Settings are runtime-only and forwarded through ApplicationHost, participate in MP4 preview cache keys, and are reported under `encoding` in result JSON. Hardware requests fail if unavailable; source decoding/compositing and interactive HLS remain CPU/software paths. See [encoding configuration](streaming-export.md#选择编码器).
+
+`doctor --video-encoder NAME` tests the chosen adapter with actual H.264 encoding, frame probing and red/blue pixel decoding, using shared runtime encoder options and bounded checks. Default doctor remains software-only; listed adapters are not a promise of local hardware availability.
+
+## 素材替换快捷入口
+
+`asset replace ASSET_ID FILE` 复用 `asset.put`，支持普通媒体/图片/LUT、托管或外部存储、流映射、dry-run、撤销与 ApplicationHost 后台执行。保留素材/流身份和时间线，刷新新文件的真实元数据与指纹，拒绝源范围越界、并发目标变更、未经覆盖授权的锁定轨道。现行 0.1.0 与内部 0.3/0.4/0.5 共用已有协议，不新增持久化字段或版本。图片序列/字体及改变流拓扑仍需显式领域操作。详见[素材替换](search-and-locate.md#素材替换)。
+
+## Sequence range cuts
+
+`sequence cut` compiles an explicit all-track or selected-track interval into an atomic `sequence.put`, using the same exact slicing semantics as item edits. It supports gap-preserving and ripple removal, absolute-boundary LinkGroup partitioning, transition endpoint repair/removal, configurable marker cuts, fixed-duration adjustment, dry-run and undo. Unselected tracks are not implicitly edited; cross-scope links and invalid nested references reject. Partial loop/fade/legacy-automation slices remain explicitly unsupported; full removal/movement work. The planner materializes all IDs in the existing command schema, so no protocol/version change is required. See [range editing](range-edits.md).
