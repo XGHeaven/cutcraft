@@ -782,7 +782,17 @@ fn render_internal(
         ]);
     }
     cmd.arg(filename);
-    progress.ffmpeg(&mut cmd, "encode", Some(frames as u64))?;
+    progress
+        .ffmpeg(&mut cmd, "encode", Some(frames as u64))
+        .map_err(|error| {
+            let encoder = if lossless {
+                "ffv1"
+            } else {
+                encoding.video_encoder.name()
+            };
+            let context = format!("Video encoder {encoder}: {error}");
+            error.context(context)
+        })?;
     progress.start("finalize", None, "files");
     progress.check_cancelled()?;
     let rendered = scratch.path().join(filename);

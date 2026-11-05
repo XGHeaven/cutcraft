@@ -242,7 +242,10 @@ pub fn export(
         progress.advance_phase("review_frames", Some(total), "frames", (i + 1) as u64);
     }
     fs::write(scratch.path().join("sheet.rgba"), pixels)?;
-    fs::write(scratch.path().join("labels.txt"), filters.join(","))?;
+    fs::write(
+        scratch.path().join("labels.txt"),
+        format!("[0:v]{}[sheet]", filters.join(",")),
+    )?;
     progress.start("encode_sheet", Some(1), "images");
     let result = progress.output(Command::new("ffmpeg").current_dir(scratch.path()).args([
         "-nostdin",
@@ -256,10 +259,12 @@ pub fn export(
         &format!("{width}x{height}"),
         "-i",
         "sheet.rgba",
-        "-filter_threads",
+        "-filter_complex_threads",
         "2",
-        "-filter_script:v",
+        crate::media_process::graph_file_option()?,
         "labels.txt",
+        "-map",
+        "[sheet]",
         "-frames:v",
         "1",
         "-threads",

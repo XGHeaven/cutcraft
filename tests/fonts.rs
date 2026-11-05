@@ -171,7 +171,7 @@ fn explicit_fonts_fail_closed_and_pinned_assets_keep_precedence() {
     .unwrap();
     assert_eq!(resolved.index, 0);
     assert_eq!(
-        resolved.path,
+        resolved.path.canonicalize().unwrap(),
         temp.path().join("pinned.ttf").canonicalize().unwrap()
     );
     fs::write(&resolved.path, b"broken font").unwrap();

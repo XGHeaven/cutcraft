@@ -55,6 +55,7 @@ ARMv7 对应 `armv7-unknown-linux-gnueabihf`、`gcc-arm-linux-gnueabihf`、
 Windows x64 在 MSVC Developer 环境用同一 package / assemble 命令，
 CI 使用 `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS="-C target-feature=+crt-static"` 静态链接 CRT，
 安装回归使用 `python scripts/test-windows-release.py --dist dist`（需要 PowerShell 5.1 和 7）。
+MSVC CLI 通过 `build.rs` 设置 8 MiB 主线程栈，覆盖 debug 与 release，避免扩展命令树在 Windows 默认 1 MiB 栈上溢出。
 Windows CI 显式设置 Fontconfig 的系统字体目录与临时缓存，避免依赖 FFmpeg 包的默认字体配置。
 macOS 正式构建设置 `MACOSX_DEPLOYMENT_TARGET=15.0`。本地没有设置时，使用工具链默认值。
 macOS CI 使用 Homebrew `ffmpeg@7` 并将其 bin 目录加入 PATH；测试前实际调用 `drawtext`，避免精简 FFmpeg 包漏掉字幕依赖。

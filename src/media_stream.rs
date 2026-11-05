@@ -164,6 +164,10 @@ where
         video,
         audio,
     )
+    .map_err(|error| {
+        let context = format!("H.264 encoder {}: {error}", encoding.video_encoder.name());
+        error.context(context)
+    })
 }
 
 fn encode<V, A>(
@@ -464,11 +468,19 @@ mod tests {
     #[test]
     fn absent_encoder_and_early_exit_do_not_leave_acceptors_waiting() {
         let p = Progress::default();
+        let empty_path = tempfile::tempdir().unwrap();
+        let executable = format!("missing-encoder-{}", uuid::Uuid::now_v7());
         let error = deadline(&p, || {
             encode(
                 1,
                 &p,
-                |_, _| Command::new("cutcraft-deliberately-missing-encoder"),
+                |_, _| {
+                    // Force PATH resolution before QEMU's execve path; a unique
+                    // name also avoids Windows falling back to the parent PATH.
+                    let mut command = Command::new(&executable);
+                    command.env("PATH", empty_path.path());
+                    command
+                },
                 |_, _| Ok(()),
                 |_, _| Ok(()),
             )
@@ -540,7 +552,14 @@ mod tests {
             thread::sleep(Duration::from_millis(100));
             control.cancel();
         });
-        let error = write(&mut socket, &vec![0; 32 * 1024 * 1024], &cancel, &halt).unwrap_err();
+        // Socket buffer sizes vary by OS; keep producing until cancellation
+        // instead of assuming one fixed payload must fill the buffer.
+        let chunk = vec![0; 1024 * 1024];
+        let error = loop {
+            if let Err(error) = write(&mut socket, &chunk, &cancel, &halt) {
+                break error;
+            }
+        };
         assert!(error.to_string().contains("JOB_CANCELLED"), "{error:#}");
         stop.join().unwrap();
         drop(client);
