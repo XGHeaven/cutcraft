@@ -179,7 +179,7 @@ impl Report {
         }
         true
     }
-    fn capabilities(&mut self, kind: &str, required: &[&str], flag_width: usize) {
+    fn capabilities(&mut self, kind: &str, required: &[&str], flag_widths: &[usize]) {
         let id = format!("ffmpeg.{kind}");
         let Some(output) = self.command(
             &id,
@@ -189,17 +189,7 @@ impl Report {
             return;
         };
         let output = String::from_utf8_lossy(&output.stdout);
-        let found: BTreeSet<_> = output
-            .lines()
-            .filter_map(|line| {
-                let mut words = line.split_whitespace();
-                let flags = words.next()?;
-                let name = words.next()?;
-                (flags.len() == flag_width
-                    && flags.bytes().all(|c| c.is_ascii_alphabetic() || c == b'.'))
-                .then_some(name)
-            })
-            .collect();
+        let found = component_names(&output, flag_widths);
         let missing: Vec<_> = required
             .iter()
             .filter(|name| !found.contains(**name))
@@ -305,8 +295,9 @@ pub fn run_with_encoder(
     let encoder = report.tool("ffmpeg");
     let probe = report.tool("ffprobe");
     if encoder {
-        report.capabilities("encoders", ENCODERS, 6);
-        report.capabilities("filters", FILTERS, 3);
+        report.capabilities("encoders", ENCODERS, &[6]);
+        // FFmpeg 9 removed the command-support flag from filter listings.
+        report.capabilities("filters", FILTERS, &[2, 3]);
         let graph_option = match timed(timeout, media_process::graph_file_option) {
             Ok(option) => {
                 report.record("ffmpeg.graphFile", "passed", option);
@@ -609,4 +600,39 @@ fn diagnose_encoder(
         );
     }
     Ok(())
+}
+
+fn component_names<'a>(output: &'a str, flag_widths: &[usize]) -> BTreeSet<&'a str> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            let flags = words.next()?;
+            let name = words.next()?;
+            (flag_widths.contains(&flags.len())
+                && flags.bytes().all(|c| c.is_ascii_alphabetic() || c == b'.')
+                && name != "=")
+                .then_some(name)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_lists_accept_legacy_and_ffmpeg9_flags_without_reading_legends() {
+        for flags in ["...", "..", "TSC", "TS"] {
+            let listing = format!("Filters:\n T.. = Timeline support\n .. = legend\n {flags} scale V->V Scale video\n {flags} anullsrc |->A Audio source\n invalid drawtext V->V Not a filter entry\n");
+            assert_eq!(
+                component_names(&listing, &[2, 3]),
+                BTreeSet::from(["scale", "anullsrc"])
+            );
+        }
+        assert_eq!(
+            component_names(" V....D libx264 H.264 encoder\n V..... = Video\n", &[6]),
+            BTreeSet::from(["libx264"])
+        );
+    }
 }
