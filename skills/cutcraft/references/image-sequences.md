@@ -1,4 +1,4 @@
-# Image sequences (CLI/Spec 0.1.0)
+# Image sequences (CLI 0.2.0 / Spec 0.1.0)
 
 Use `import-sequence` to register a frozen, ordered frame manifest as one video asset (`stream_v0`). Ordinary `import photo.png` remains a single still. Existing 0.3/0.4 projects return PROJECT_UPGRADE_REQUIRED; create a separate 0.1.0 project at the user-approved location rather than rewriting its version/history. Internal 0.5.0 projects still support image sequences. There is no in-place migration command.
 

@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/inst
 ```
 
 默认安装到 `~/.local/bin`，再次运行同一条命令即可更新到最新正式版；版本相同时直接退出。
-管道末尾改为 `sh -s -- --version 0.1.0` 可切换到指定版本；
+管道末尾改为 `sh -s -- --version 0.2.0` 可切换到指定版本；
 卸载时改为 `sh -s -- --uninstall`。也支持本地压缩包离线安装，详见 [安装说明](docs/install.md)。
 二进制安装不需要 Rust 或 Python；媒体操作需要外部 FFmpeg / ffprobe。安装后可运行 `cutcraft doctor` 检查版本、编码器、滤镜及实际媒体处理能力，详见[环境诊断](docs/doctor.md)。
 Windows 使用 `scripts/install.ps1`，平台要求和 PowerShell 安装方式见 [安装说明](docs/install.md#windows-powershell)。
@@ -250,8 +250,8 @@ cargo fmt --check
 
 项目使用 `cutcraft.json`，内含协议版本及创建/编辑应用版本。所有项目读写通过 `.cutcraft.lock` 的 OS 排他锁互斥；PID 仅用于诊断。旧 `project.json` 需显式迁移，当前 CLI 不自动改动旧项目。
 
-CLI 0.1.0 支持视觉处理：偏移/缩放/旋转/裁剪、调色、RGB 曲线及 LUT/.cube。使用方式见 [视觉效果操作](docs/visual-effects.md)。
+CLI 0.2.0 支持视觉处理：偏移/缩放/旋转/裁剪、调色、RGB 曲线及 LUT/.cube。使用方式见 [视觉效果操作](docs/visual-effects.md)。
 
-CLI 0.1.0 提供 `item animate`、`item speed`、`item time-map`、`transition`。完整示例和渲染边界见 [动画与时间映射指南](docs/animation-and-retime.md)。
+CLI 0.2.0 提供 `item animate`、`item speed`、`item time-map`、`transition`。完整示例和渲染边界见 [动画与时间映射指南](docs/animation-and-retime.md)。
 
 硬件编码可用 `cutcraft doctor --video-encoder h264_videotoolbox` 实际诊断（也可指定 libx264/NVENC/QSV）；会编码、探测并解码核对测试帧，设备不可用明确失败。见[诊断说明](docs/doctor.md)。

@@ -1,4 +1,4 @@
-# 视觉效果操作（CLI 0.1.0）
+# 视觉效果操作（CLI 0.2.0）
 
 以下命令实际修改时间线并参与 render/preview。将 PROJECT、ITEM、ASSET_ID 替换为实际目录或 ID；`inspect` 返回素材、轨道、Item 和效果的 ID。无需 Python。
 

@@ -7,7 +7,7 @@
 
 - CI：Linux Rust 1.86 / stable 的 fmt、Clippy、强制媒体测试；Linux x86_64、两个 macOS 平台及
   Windows x64 的原生完整测试、打包和安装验证。Linux ARM64 / ARMv7 使用 GCC 交叉链接器
-  构建，QEMU 执行库/动画测试及打包前后 CLI 冒烟验证，不将模拟器检查表述为原生媒体验证。
+  构建，QEMU 执行库/动画测试及打包前后 CLI 冒烟验证；媒体子进程使用 runner 的宿主 FFmpeg，不将模拟器检查表述为原生 ARM 媒体验证。
 - Release：推送 `v*` tag 触发；校验 tag 必须等于 `v` 加 Cargo 版本，Cargo.lock 与
   Changelog 必须匹配。复用全部 CI，通过后汇总六个平台和技能包，生成 SHA256SUMS。
 - 只有 tag push 会创建 GitHub Release。手动运行 Release workflow 只生成可下载的
@@ -19,7 +19,7 @@
 ## 本地演练
 
 ```sh
-python3 scripts/release.py check --tag v0.1.0
+python3 scripts/release.py check --tag v0.2.0
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 CUTCRAFT_REQUIRE_FFMPEG=1 cargo test --locked
@@ -36,11 +36,11 @@ python3 scripts/test-release.py --dist dist
 例如在 Ubuntu 24.04 x86_64 上构建 Linux ARM64：
 
 ```sh
-sudo apt-get install gcc-aarch64-linux-gnu qemu-user
+sudo apt-get install gcc-aarch64-linux-gnu qemu-user ffmpeg fonts-dejavu-core
 rustup target add aarch64-unknown-linux-gnu
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu"
-cargo test --locked --target aarch64-unknown-linux-gnu --lib
+CUTCRAFT_REQUIRE_FFMPEG=1 cargo test --locked --target aarch64-unknown-linux-gnu --lib --test animation
 python3 scripts/release.py package --target aarch64-unknown-linux-gnu \
   --runner "qemu-aarch64 -L /usr/aarch64-linux-gnu"
 python3 scripts/release.py assemble --partial
@@ -78,8 +78,8 @@ CI 直接验证仓库中的安装脚本；脚本修复可单独合入主分支�
 3. 更新 Cargo.toml 的 CLI 版本及 Cargo.lock，并在 CHANGELOG.md 添加同版本条目。
    项目协议版本独立维护，不因为 CLI 修复版本变化就修改 `SPEC_VERSION`。
 4. 将版本更改提交，确保工作区干净；在通过检查的提交上创建 annotated tag：
-   `git tag -a v0.1.0 -m 'Cutcraft 0.1.0'`。
-5. 准备公开时才推送该 tag：`git push origin v0.1.0`，这一步会触发正式发布。
+   `git tag -a v0.2.0 -m 'Cutcraft 0.2.0'`。
+5. 准备公开时才推送该 tag：`git push origin v0.2.0`，这一步会触发正式发布。
 6. 检查 Release 附件、安装与版本号，再更新对外下载链接。
 
 不要移动已发布 tag 或替换同版本二进制；修复使用新版本。若发布中途失败，先检查

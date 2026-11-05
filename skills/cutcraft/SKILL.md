@@ -5,7 +5,7 @@ description: Create, inspect, edit, preview, and render Cutcraft video projects,
 
 # Cutcraft
 
-Operate the installed Rust CLI to create a reviewable project and the requested video. This skill targets CLI/spec 0.1.0; query the installed binary rather than assuming every specification feature has a renderer.
+Operate the installed Rust CLI to create a reviewable project and the requested video. This skill targets CLI 0.2.0 with Spec 0.1.0; query the installed binary rather than assuming every specification feature has a renderer.
 
 ## Available workflows
 

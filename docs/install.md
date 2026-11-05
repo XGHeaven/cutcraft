@@ -17,7 +17,7 @@ Cutcraft 通过 GitHub Releases 分发可执行文件，不发布到 crates.io�
 | macOS Intel | `x86_64-apple-darwin` | macOS 15+ |
 | Windows x64 | `x86_64-pc-windows-msvc` | Windows 10+ / Server 2022+；CI 在 Server 2022 原生测试，ZIP 包 |
 
-v0.1.0 的跨平台重发包含上述六个平台；下载时以实际 Release 附件为准。
+v0.2.0 包含上述六个平台；下载时以实际 Release 附件为准。
 Linux ARM 未执行原生硬件媒体回归，不支持 ARMv6、soft-float 或 musl。Windows 暂不分发 ARM64 / x86 包。
 macOS 文件暂无 Developer ID 签名和公证；Windows 文件暂无 Authenticode 签名。
 通过浏览器下载后可能需要按 macOS 的系统提示允许运行，不要全局关闭系统安全设置。
@@ -43,7 +43,7 @@ cutcraft capabilities
 通过管道传入参数时使用 `sh -s --`，例如指定版本（也支持预发布版本）和目录：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.sh | sh -s -- --version 0.1.0 --bin-dir "$HOME/.local/bin"
+curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.sh | sh -s -- --version 0.2.0 --bin-dir "$HOME/.local/bin"
 ```
 
 脚本完整解析后才执行安装，下载中断造成的未闭合脚本不会开始安装。
@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/inst
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/XGHeaven/cutcraft/main/scripts/install.sh -o install.sh
-sh install.sh --version 0.1.0
+sh install.sh --version 0.2.0
 ```
 
 脚本识别当前平台，验证同一 Release 的 `SHA256SUMS`，运行版本检查后
@@ -66,8 +66,8 @@ sh install.sh --version 0.1.0
 已经下载二进制压缩包及 `SHA256SUMS` 时，可以完全离线安装；离线模式必须指定具体版本：
 
 ```sh
-sh install.sh --version 0.1.0 \
-  --archive cutcraft-v0.1.0-aarch64-apple-darwin.tar.gz \
+sh install.sh --version 0.2.0 \
+  --archive cutcraft-v0.2.0-aarch64-apple-darwin.tar.gz \
   --checksums SHA256SUMS --bin-dir "$HOME/.local/bin"
 ```
 
@@ -106,7 +106,7 @@ cutcraft --version
 离线安装：
 
 ```powershell
-.\install.ps1 -Version 0.1.0 -Archive .\cutcraft-v0.1.0-x86_64-pc-windows-msvc.zip -Checksums .\SHA256SUMS
+.\install.ps1 -Version 0.2.0 -Archive .\cutcraft-v0.2.0-x86_64-pc-windows-msvc.zip -Checksums .\SHA256SUMS
 ```
 
 也可手动核对 SHA-256 后解压
@@ -154,7 +154,7 @@ npx skills add XGHeaven/cutcraft --skill cutcraft -g -a codex
 
 ### 离线安装技能
 
-也可下载并校验 Release 中的 `cutcraft-skill-v0.1.0.tar.gz`，解压后进入同名目录：
+也可下载并校验 Release 中的 `cutcraft-skill-v0.2.0.tar.gz`，解压后进入同名目录：
 
 ```sh
 sh scripts/install-skill.sh

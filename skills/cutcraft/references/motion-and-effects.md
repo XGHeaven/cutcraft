@@ -1,6 +1,6 @@
 # Motion, time maps, transitions and effects
 
-These commands target CLI 0.1.0. Check the installed `capabilities`, relevant `schema`, and `--help` when version support differs. `PROJECT`, `ITEM`, `FROM`, `TO`, `EFFECT_ID`, and `LUT_ASSET_ID` below are placeholders for actual paths/IDs.
+These commands target CLI 0.2.0. Check the installed `capabilities`, relevant `schema`, and `--help` when version support differs. `PROJECT`, `ITEM`, `FROM`, `TO`, `EFFECT_ID`, and `LUT_ASSET_ID` below are placeholders for actual paths/IDs.
 
 ## Property animation
 

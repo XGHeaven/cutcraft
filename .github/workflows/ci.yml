@@ -155,8 +155,8 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - name: Install cross linker and emulator
-        run: sudo apt-get update && sudo apt-get install -y gcc-${{ matrix.gcc }} qemu-user
+      - name: Install cross linker, emulator and host media dependencies
+        run: sudo apt-get update && sudo apt-get install -y gcc-${{ matrix.gcc }} qemu-user ffmpeg fonts-dejavu-core
       - name: Configure Cargo cross target
         shell: bash
         env:
@@ -169,6 +169,8 @@ jobs:
           echo "CARGO_TARGET_${key}_LINKER=${CROSS_GCC}-gcc" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_${key}_RUNNER=${QEMU} -L /usr/${CROSS_GCC}" >> "$GITHUB_ENV"
       - name: Run target library and animation tests under QEMU
+        env:
+          CUTCRAFT_REQUIRE_FFMPEG: '1'
         run: cargo test --locked --target "${{ matrix.target }}" --lib --test animation
       - name: Package and run target executable under QEMU
         run: python3 scripts/release.py package --target "${{ matrix.target }}" --runner "${{ matrix.qemu }} -L /usr/${{ matrix.gcc }}"
