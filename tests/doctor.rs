@@ -19,7 +19,8 @@ fn report(out: Output, success: bool) -> Value {
     assert_eq!(
         out.status.code(),
         Some(if success { 0 } else { 1 }),
-        "{}",
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(

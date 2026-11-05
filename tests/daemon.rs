@@ -202,6 +202,7 @@ fn authentication_origin_single_use_code_and_multiple_projects() {
     assert_eq!(opened["authenticationRequired"], true);
     let client = reqwest::blocking::Client::builder()
         .no_proxy()
+        .timeout(Duration::from_secs(30))
         .build()
         .unwrap();
     assert_eq!(
@@ -444,6 +445,7 @@ fn import_busy_close_preserves_open_project_and_allows_concurrent_edits() {
     loop {
         let result: Value = reqwest::blocking::Client::builder()
             .no_proxy()
+            .timeout(Duration::from_secs(30))
             .build()
             .unwrap()
             .get(host.url(&format!("/api/v1/tasks/{task}")))
@@ -481,6 +483,7 @@ fn draft_preview_preserves_disk_and_rejects_old_generations() {
     let draft = json!({"scale":0.25,"sequence":project["rootSequenceId"],"at":{"num":0,"den":1},"revision":0,"generation":2,"clientId":"draft-test","command":{"type":"track.put","sequenceId":project["rootSequenceId"],"track":{"id":cutcraft::id("track"),"kind":"video","name":"Draft","overlapPolicy":"forbid","items":[{"id":cutcraft::id("item"),"type":"generator","generatorType":"builtin.color","version":"1.0.0","parameters":{"color":{"r":1,"g":0,"b":0,"a":1}},"timelineRange":{"start":{"num":0,"den":1},"duration":{"num":1,"den":1}}}]}}});
     let client = reqwest::blocking::Client::builder()
         .no_proxy()
+        .timeout(Duration::from_secs(30))
         .build()
         .unwrap();
     let response = client
@@ -538,6 +541,7 @@ fn loopback_needs_no_code_or_cookie_and_keeps_origin_and_binding_checks() {
     assert!(opened["url"].as_str().unwrap().contains("?project="));
     let client = reqwest::blocking::Client::builder()
         .no_proxy()
+        .timeout(Duration::from_secs(30))
         .build()
         .unwrap();
     for _ in 0..2 {
@@ -625,6 +629,7 @@ fn ipv6_loopback_urls_and_anonymous_requests_work() {
     let base = opened["url"].as_str().unwrap().split("/?").next().unwrap();
     let response = reqwest::blocking::Client::builder()
         .no_proxy()
+        .timeout(Duration::from_secs(30))
         .build()
         .unwrap()
         .get(format!("{base}/api/v1/projects"))
@@ -635,4 +640,34 @@ fn ipv6_loopback_urls_and_anonymous_requests_work() {
         host.success(&["close", host.project.to_str().unwrap()])["stopping"],
         true
     );
+}
+
+#[test]
+fn opening_host_does_not_retain_callers_output_pipes() {
+    let host = HostTest::new();
+    let runtime = host.runtime.clone();
+    let project = host.project.clone();
+    let (send, receive) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let result = Command::new(env!("CARGO_BIN_EXE_cutcraft"))
+            .env("CUTCRAFT_RUNTIME_DIR", runtime)
+            .arg("open")
+            .arg(project)
+            .arg("--no-browser")
+            .output();
+        let _ = send.send(result);
+    });
+    let output = receive
+        .recv_timeout(Duration::from_secs(45))
+        .expect("open retained output pipes after starting the host")
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let opened: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(opened["handle"].is_string());
+    reader.join().unwrap();
+    // HostTest closes the still-running host after the pipe reader has returned.
 }
