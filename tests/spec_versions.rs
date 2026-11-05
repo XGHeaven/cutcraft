@@ -32,9 +32,26 @@ fn public_examples_and_history_are_a_replayable_contract() {
     assert_eq!(event["projectHashAfter"], store::hash(&after).unwrap());
     assert_eq!(event["command"], op["command"]);
     let (mut replayed, replay_event) = edit::apply(&before, &op, false).unwrap();
-    // Wall-clock edit time varies; all domain data and inverse commands must agree.
+    assert_eq!(
+        replay_event["projectHashBefore"],
+        store::hash(&before).unwrap()
+    );
+    assert_eq!(
+        replay_event["projectHashAfter"],
+        store::hash(&replayed).unwrap()
+    );
+    // Reapplying with a newer CLI preserves creation provenance and records the
+    // current editor. The historical fixture and its hashes remain unchanged.
+    let mut expected = after.clone();
+    let current = project::application();
+    expected["lastModifiedWith"] = current.clone();
+    let editors = expected["editors"].as_array_mut().unwrap();
+    if !editors.contains(&current) {
+        editors.push(current);
+    }
+    // Wall-clock edit time varies; domain data and inverse commands must agree.
     replayed["updatedAt"] = after["updatedAt"].clone();
-    assert_eq!(replayed, after);
+    assert_eq!(replayed, expected);
     assert_eq!(replay_event["inverseCommands"], event["inverseCommands"]);
 }
 

@@ -241,7 +241,11 @@ esac"#
             ),
             false,
         );
-        assert_eq!(check(&value, "ffmpeg.encoders")["status"], "passed");
+        assert_eq!(
+            check(&value, "ffmpeg.encoders")["status"],
+            "passed",
+            "{value}"
+        );
         assert_eq!(check(&value, "encoder.encode")["status"], "failed");
         assert_eq!(
             check(&value, "encoder.encode")["videoEncoder"],
