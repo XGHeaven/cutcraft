@@ -38,7 +38,39 @@ impl HostTest {
         if let Some(path) = &self.path_override {
             command.env("PATH", path);
         }
-        command.output().unwrap()
+        // File captures remain readable on timeout, even if a descendant keeps
+        // a stdio handle open. Report the host log instead of hanging the suite.
+        let stdout = tempfile::NamedTempFile::new().unwrap();
+        let stderr = tempfile::NamedTempFile::new().unwrap();
+        command
+            .stdout(stdout.reopen().unwrap())
+            .stderr(stderr.reopen().unwrap());
+        let mut child = command.spawn().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(45);
+        let (status, timed_out) = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break (status, false);
+            }
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                break (child.wait().unwrap(), true);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let mut error = std::fs::read(stderr.path()).unwrap();
+        if timed_out || !status.success() {
+            error.extend_from_slice(
+                format!("\ncommand={args:?}; timed_out={timed_out}\n").as_bytes(),
+            );
+            if let Ok(log) = std::fs::read(self.runtime.join("host.log")) {
+                error.extend_from_slice(&log);
+            }
+        }
+        Output {
+            status,
+            stdout: std::fs::read(stdout.path()).unwrap(),
+            stderr: error,
+        }
     }
     fn success(&self, args: &[&str]) -> Value {
         let output = self.run(args);
@@ -58,6 +90,7 @@ impl HostTest {
     fn request(&self, path: &str, body: Value) -> Value {
         reqwest::blocking::Client::builder()
             .no_proxy()
+            .timeout(Duration::from_secs(30))
             .build()
             .unwrap()
             .post(self.url(path))

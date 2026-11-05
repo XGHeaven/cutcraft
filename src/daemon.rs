@@ -311,6 +311,9 @@ fn client() -> Result<reqwest::blocking::Client> {
     Ok(reqwest::blocking::Client::builder()
         .no_proxy()
         .connect_timeout(Duration::from_secs(2))
+        // Media jobs are submitted asynchronously and polled. A stalled host
+        // must not leave startup, close or an individual RPC waiting forever.
+        .timeout(Duration::from_secs(30))
         .build()?)
 }
 fn rpc(runtime: &Runtime, method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
